@@ -36,10 +36,11 @@ dev.off()
 
 #Filter en trimming
 filts <- file.path(path.output, "Filtered", basename(fastq.input))
-track <- filterAndTrim(fastq.input, filts, minQ=3, minLen=1000, maxN=0, rm.phix=FALSE, maxEE=2, multithread = TRUE)
+track <- filterAndTrim(fastq.input, filts, minQ=3, minLen=1000, maxLen=1600
+  maxN=0, rm.phix=FALSE, maxEE=2, multithread = TRUE)
 track <- as.data.frame(track)
 track$sample <- rownames(track)
-
+rownames(track) <- NULL 
 
 ggplot(data=track)+
   geom_col(aes(x=reads.in, y=sample, fill="Reads in"), position="dodge")+
@@ -47,6 +48,7 @@ ggplot(data=track)+
   scale_fill_manual(name="Legend", values=c("Reads in"="darkblue", "Reads out"="darkgreen"))+
   labs(x="Number of reads")
 ggsave(filename = file.path(path.figures, "track_filter-trim_plot.pdf"))
+write.csv(track, file.path(path.figures, "track_filter-trim.csv"))
 
 
 

@@ -84,7 +84,8 @@ for(func_name in names(errorEstFunc.list)){
 
 track <- as.data.frame(track)
 track$sample <- basename(path.filts)
-track
+rownames(track) <- NULL 
+
 track_long <- pivot_longer(track, cols = -sample,
                            names_to = "method", values_to = "denoised")
 
@@ -94,5 +95,5 @@ ggplot(track_long, aes(x = reorder(method, denoised, FUN = median), y = denoised
   labs(x = "Error model", y = "Reads denoised")
 
 ggsave(file.path(path.figures, "track_denoised_boxplot.pdf"), width = 8, height = 6)
-
+write.csv(track, file.path(path.figures, "track_denoised_dada2.csv"))
 
