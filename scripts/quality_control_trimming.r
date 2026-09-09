@@ -44,7 +44,7 @@ track$sample <- rownames(track)
 ggplot(data=track)+
   geom_col(aes(x=reads.in, y=sample, fill="Reads in"), position="dodge")+
   geom_col(aes(x=reads.out, y=sample, fill="Reads out"), position="dodge")+
-  scale_fill_manual(name="Legend", values=c("Reads.in"="darkblue", "Reads.out"="darkgreen"))+
+  scale_fill_manual(name="Legend", values=c("Reads in"="darkblue", "Reads out"="darkgreen"))+
   labs(x="Number of reads")
 ggsave(filename = file.path(path.figures, "track_filter-trim_plot.pdf"))
 
