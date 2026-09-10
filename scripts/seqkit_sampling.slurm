@@ -24,24 +24,30 @@ set -euo pipefail
 module load SeqKit/2.6.1
 
 # Define variables and constants
-DATA_DIR="${1:-}"
+DATA_DIR=$1
+SEED=$2
 prop_list=(50 25 10 5 1)
 
 if [ -z "$DATA_DIR" ]; then
     echo "ERROR : Missing parameter"
-    echo "USAGE : sbatch $0 path/to/data/directory"
+    echo "USAGE : sbatch $0 path/to/data/directory [seed]"
     echo "You have to provide the directory on which there are fastq files"
     exit 1
+fi
+
+if [ -z "$SEED" ]; then
+    echo "Default seed = 11 will be used..."
+    SEED=11
 fi
 
 pct="${prop_list[$SLURM_ARRAY_TASK_ID]}"
 prop=$(echo "scale=2; ${pct}/100" | bc -l)
 prop="0${prop}"  
 
-OUT_DIR="$(dirname "$DATA_DIR")/$(basename "$DATA_DIR")_${pct}"
+OUT_DIR="$(dirname "$DATA_DIR")/${SEED}/$(basename "$DATA_DIR")_${pct}_${SEED}"
 mkdir -p "$OUT_DIR"
 
 for fastq_file in "$DATA_DIR"/*.fastq*; do
     out_file="${OUT_DIR}/$(basename "$fastq_file")"
-    seqkit sample --rand-seed 41 --proportion "$prop" "$fastq_file" | gzip > "$out_file"
+    seqkit sample --rand-seed $SEED --proportion "$prop" "$fastq_file" | gzip > "$out_file"
 done
