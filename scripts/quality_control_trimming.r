@@ -36,7 +36,7 @@ dev.off()
 
 #Filter en trimming
 filts <- file.path(path.output, "Filtered", basename(fastq.input))
-track <- filterAndTrim(fastq.input, filts, minQ=3, minLen=1000, maxLen=1600
+track <- filterAndTrim(fastq.input, filts, minQ=3, minLen=1000, maxLen=1600,
   maxN=0, rm.phix=FALSE, maxEE=2, multithread = TRUE)
 track <- as.data.frame(track)
 track$sample <- rownames(track)
