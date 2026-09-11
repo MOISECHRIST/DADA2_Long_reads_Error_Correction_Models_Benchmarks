@@ -32,6 +32,7 @@ if (is.na(seed)) {
   randomize=FALSE
 } else {
   set.seed(seed)
+  randomize=TRUE
 }
 path.rds <- file.path(path.output, "RDS")
 path.figures <- file.path(path.output, "Figure")
@@ -63,14 +64,16 @@ for(func_name in names(errorEstFunc.list)){
         path.filts,
         errorEstimationFunction = func(c(3, 10, 17, 22, 27, 35, 40)),
         nbases = nbases,
-        multithread = TRUE
+        multithread = TRUE,
+        randomize=randomize
       )
     } else {
       learnErrors(
         path.filts,
         errorEstimationFunction = func,
         nbases = nbases,
-        multithread = TRUE, randomize=randomize
+        multithread = TRUE, 
+        randomize=randomize
       )
     }
   }, error = function(e) {

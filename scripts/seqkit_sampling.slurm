@@ -44,7 +44,7 @@ pct="${prop_list[$SLURM_ARRAY_TASK_ID]}"
 prop=$(echo "scale=2; ${pct}/100" | bc -l)
 prop="0${prop}"  
 
-OUT_DIR="$(dirname "$DATA_DIR")/${SEED}/$(basename "$DATA_DIR")_${pct}_${SEED}"
+OUT_DIR="$(dirname "$DATA_DIR")/$(basename "$DATA_DIR")_${pct}_${SEED}"
 mkdir -p "$OUT_DIR"
 
 for fastq_file in "$DATA_DIR"/*.fastq*; do
