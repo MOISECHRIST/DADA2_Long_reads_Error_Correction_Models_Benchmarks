@@ -26,6 +26,12 @@ nbases <- as.numeric(args[3])
 if (is.na(nbases)) {
   nbases <- 1e+08
 }
+seed<-as.numeric(args[4])
+if (is.na(seed)) {
+  randomize=FALSE
+} else {
+  set.seed(seed)
+}
 path.rds <- file.path(path.output, "RDS")
 path.figures <- file.path(path.output, "Figure")
 path.filts <- list.files(path.input, pattern="fastq.gz", full.names=TRUE)
@@ -63,7 +69,7 @@ for(func_name in names(errorEstFunc.list)){
         path.filts,
         errorEstimationFunction = func,
         nbases = nbases,
-        multithread = TRUE
+        multithread = TRUE, randomize=randomize
       )
     }
   }, error = function(e) {
