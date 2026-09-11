@@ -11,16 +11,21 @@ source("scripts/functions.R")
 #Check whether the number of parameters is 2
 args <- commandArgs(trailingOnly=TRUE)
 
-if(length(args)!=2){
+if(length(args)<2){
   print("This script takes the following parameters:")
   print("   (1) Path to input filtered reads directory")
   print("   (2) Path to output directory")
+  print("   (3) Number bases to consider for learning error step (DEFAULT 1e+08).")
   stop("Error: Required arguments are not provided.", call.=FALSE)
 }
 
 #Setup inputs and outputs 
 path.input <- args[1]
 path.output <- args[2]
+nbases <- as.numeric(args[3])
+if (is.na(nbases)) {
+  nbases <- 1e+08
+}
 path.rds <- file.path(path.output, "RDS")
 path.figures <- file.path(path.output, "Figure")
 path.filts <- list.files(path.input, pattern="fastq.gz", full.names=TRUE)
@@ -50,12 +55,14 @@ for(func_name in names(errorEstFunc.list)){
       learnErrors(
         path.filts,
         errorEstimationFunction = func(c(3, 10, 17, 22, 27, 35, 40)),
+        nbases = nbases,
         multithread = TRUE
       )
     } else {
       learnErrors(
         path.filts,
         errorEstimationFunction = func,
+        nbases = nbases,
         multithread = TRUE
       )
     }
