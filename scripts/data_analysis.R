@@ -72,7 +72,8 @@ sequel_unibe_distances.long <- sequel_unibe_distances |>
                values_to = "distances",
                names_to = "errors.function") |>
   mutate(
-    errors.function = sub(".rds","",errors.function)
+    errors.function = sub(".rds","",errors.function),
+    dataset.prop = factor(dataset.prop, levels = c("1", "5", "10", "25", "50", "100"))
   )
 
 sequel_unibe_distances.long |>
@@ -84,9 +85,6 @@ sequel_unibe_distances.long |>
 ggsave(file.path(results.path,"Sequel_UniBe_dataset_distance_plot.pdf"))
 
 sequel_unibe_distances.long |>
-  mutate(
-    dataset.prop = factor(dataset.prop, levels = c("1", "5", "10", "25", "50", "100"))
-  ) |>
 ggplot()+
   geom_boxplot(aes(x=dataset.prop, y=distances), alpha=0.4)+
   facet_grid(cols=vars(errors.function))+
@@ -109,7 +107,8 @@ revio_unibe_distances.long <- revio_unibe_distances |>
                values_to = "distances",
                names_to = "errors.function") |>
   mutate(
-    errors.function = sub(".rds","",errors.function)
+    errors.function = sub(".rds","",errors.function),
+    dataset.prop = factor(dataset.prop, levels = c("1", "5", "10", "25", "50", "100"))
   )
 
 revio_unibe_distances.long |>
