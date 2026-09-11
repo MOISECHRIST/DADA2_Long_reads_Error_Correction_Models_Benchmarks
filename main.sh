@@ -23,6 +23,10 @@ module purge 2>/dev/null || true
 # Path to directory with all data sets
 ALL_DATA_DIR=$1
 DATASET_LIST=($(ls "$ALL_DATA_DIR"))
+NBASES=$2
+if [ -z "$NBASES" ]; then 
+  NBASES="1e+08"
+fi
 
 data_dir="${DATASET_LIST[${SLURM_ARRAY_TASK_ID}]}"
 echo "Working on : ${data_dir}"
@@ -31,4 +35,4 @@ apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir containers/dada2
   Rscript ./scripts/quality_control_trimming.r "${ALL_DATA_DIR}/${data_dir}" "results/${data_dir}"
 
 apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir containers/dada2-pipeline.sif \
-  Rscript ./scripts/dada2_analysis.R "results/${data_dir}/Filtered" "results/${data_dir}"
+  Rscript ./scripts/dada2_analysis.R "results/${data_dir}/Filtered" "results/${data_dir}" "$NBASES"
