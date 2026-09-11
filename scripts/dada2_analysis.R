@@ -16,6 +16,7 @@ if(length(args)<2){
   print("   (1) Path to input filtered reads directory")
   print("   (2) Path to output directory")
   print("   (3) Number bases to consider for learning error step (DEFAULT 1e+08).")
+  print("   (4) Seed for random choice.")
   stop("Error: Required arguments are not provided.", call.=FALSE)
 }
 
