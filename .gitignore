@@ -8,3 +8,4 @@ containers
 Rplots.pdf
 refSeq
 .RDataTmp
+summary/*.rds
