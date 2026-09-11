@@ -142,7 +142,6 @@ for (ref_name in names(dada2_results_data)){
   n<-n+1
 }
 saveRDS(seq_tables,file.path(results.path, "all_dataset_sequence_table.rds"))
-test <- mergeSequenceTables(tables = seq_tables)
 
 #Assign taxonomy
 n=1
