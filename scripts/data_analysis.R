@@ -131,7 +131,7 @@ revio_unibe_distances.long |>
 ggsave(file.path(results.path,"Revio_UniBe_dataset_distance_boxplot.pdf"))
 
 
-#Sequence table and assign taxonomy
+#Sequence table
 seq_tables <- list()
 taxaAssign <- list()
 N <- length(names(dada2_results_data))
@@ -139,10 +139,18 @@ n=1
 for (ref_name in names(dada2_results_data)){
   cat("[",n,"/",N,"] : ", ref_name,"\n")
   seq_tables[[ref_name]] <- makeSequenceTable(dada2_results_data[[ref_name]])
-  taxaAssign[[ref_name]] <- assignTaxonomy(seq_tables[[ref_name]], ref.db,multithread = T)
   n<-n+1
 }
 saveRDS(seq_tables,file.path(results.path, "all_dataset_sequence_table.rds"))
+test <- mergeSequenceTables(tables = seq_tables)
+
+#Assign taxonomy
+n=1
+for (ref_name in names(dada2_results_data)){
+  cat("[",n,"/",N,"] : ", ref_name,"\n")
+  taxaAssign[[ref_name]] <- assignTaxonomy(seq_tables[[ref_name]], ref.db,multithread = T)
+  n<-n+1
+}
 saveRDS(taxaAssign,file.path(results.path, "all_dataset_taxonomy_assignment.rds"))
 
 
