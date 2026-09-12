@@ -1,5 +1,14 @@
 #!/usr/bin/R
 
+#Load libraries
+library(dada2, verbose = FALSE, quietly = TRUE); packageVersion("dada2")
+library(ggplot2, verbose = FALSE, quietly = TRUE); packageVersion("ggplot2")
+library(tidyr, verbose = FALSE, quietly = TRUE); packageVersion("tidyr") 
+library(dplyr, verbose = FALSE, quietly = TRUE); packageVersion("dplyr") 
+library(phyloseq, verbose = FALSE, quietly = TRUE); packageVersion("phyloseq")
+library(Biostrings, verbose = FALSE, quietly = TRUE); packageVersion("Biostrings")
+
+#Define functions
 readMultiRDS <- function(list_of_paths){
   res <- list()
   for(file_path in list_of_paths){
@@ -37,13 +46,35 @@ computeDistances <- function(dada2_results_data, dataset_list, errFunc_list, dat
   return(distances)
 }
 
-#Load libraries
-library(dada2, verbose = FALSE, quietly = TRUE); packageVersion("dada2")
-library(ggplot2, verbose = FALSE, quietly = TRUE); packageVersion("ggplot2")
-library(tidyr, verbose = FALSE, quietly = TRUE); packageVersion("tidyr") 
-library(dplyr, verbose = FALSE, quietly = TRUE); packageVersion("dplyr") 
-library(phyloseq, verbose = FALSE, quietly = TRUE); packageVersion("phyloseq")
-library(Biostrings, verbose = FALSE, quietly = TRUE); packageVersion("Biostrings")
+transToLong.prop <- function(distances){
+  distances.long <- distances |>
+    pivot_longer(cols = ends_with(".rds"),
+                 values_to = "distances",
+                 names_to = "errors.function") |>
+    mutate(
+      errors.function = sub(".rds","",errors.function),
+      dataset.prop = factor(dataset.prop, levels = c("1", "5", "10", "25", "50", "100"))
+    )
+  return(distances.long)
+}
+
+plotDistancePoint.prop <- function(distances.long){
+  distances.long |>
+    ggplot()+
+    geom_point(aes(x=dataset.prop, y=distances), alpha=0.4)+
+    facet_grid(cols=vars(errors.function))+
+    labs(x="Dataset proportion (%)",
+         y="Distance to the full dataset") + theme_bw()
+}
+
+plotDistanceBoxplot.prop <- function(distances.long){
+  distances.long |>
+    ggplot()+
+    geom_boxplot(aes(x=dataset.prop, y=distances), alpha=0.4)+
+    facet_grid(cols=vars(errors.function))+
+    labs(x="Dataset proportion (%)",
+         y="Distance to the full dataset") + theme_bw()
+}
 
 #Input data
 path.alldataset <- file.path(list.files("results", full.names = T), "RDS")
@@ -67,29 +98,10 @@ sequel_unibe_distances <- computeDistances(dada2_results_data,
                                        "loessErrfun.rds"),
                                      "Sequel_UniBe")
 
-sequel_unibe_distances.long <- sequel_unibe_distances |>
-  pivot_longer(cols = ends_with(".rds"),
-               values_to = "distances",
-               names_to = "errors.function") |>
-  mutate(
-    errors.function = sub(".rds","",errors.function),
-    dataset.prop = factor(dataset.prop, levels = c("1", "5", "10", "25", "50", "100"))
-  )
-
-sequel_unibe_distances.long |>
-  ggplot()+
-    geom_point(aes(x=dataset.prop, y=distances), alpha=0.4)+
-    facet_grid(cols=vars(errors.function))+
-    labs(x="Dataset proportion (%)",
-         y="Distance to the full dataset") + theme_bw()
+sequel_unibe_distances.long <- transToLong.prop(sequel_unibe_distances)
+plotDistancePoint.prop(sequel_unibe_distances.long)
 ggsave(file.path(results.path,"Sequel_UniBe_dataset_distance_plot.pdf"))
-
-sequel_unibe_distances.long |>
-ggplot()+
-  geom_boxplot(aes(x=dataset.prop, y=distances), alpha=0.4)+
-  facet_grid(cols=vars(errors.function))+
-  labs(x="Dataset proportion (%)",
-       y="Distance to the full dataset") + theme_bw()
+plotDistanceBoxplot.prop(sequel_unibe_distances.long)
 ggsave(file.path(results.path,"Sequel_UniBe_dataset_distance_boxplot.pdf"))
 
 #Revio_UniBe Distances 
@@ -102,34 +114,11 @@ revio_unibe_distances <- computeDistances(dada2_results_data,
                                        "loessErrfun_mod0.rds"),
                                      "Revio_UniBe")
 
-revio_unibe_distances.long <- revio_unibe_distances |>
-  pivot_longer(cols = ends_with(".rds"),
-               values_to = "distances",
-               names_to = "errors.function") |>
-  mutate(
-    errors.function = sub(".rds","",errors.function),
-    dataset.prop = factor(dataset.prop, levels = c("1", "5", "10", "25", "50", "100"))
-  )
-
-revio_unibe_distances.long |>
-  ggplot()+
-  geom_point(aes(x=dataset.prop, y=distances), alpha=0.4)+
-  facet_grid(cols=vars(errors.function))+
-  labs(x="Dataset proportion (%)",
-       y="Distance to the full dataset") + theme_bw()
+revio_unibe_distances.long <- transToLong.prop(revio_unibe_distances)
+plotDistancePoint.prop(revio_unibe_distances.long)
 ggsave(file.path(results.path,"Revio_UniBe_dataset_distance_plot.pdf"))
-
-revio_unibe_distances.long |>
-  mutate(
-    dataset.prop = factor(dataset.prop, levels = c("1", "5", "10", "25", "50", "100"))
-  ) |>
-  ggplot()+
-  geom_boxplot(aes(x=dataset.prop, y=distances), alpha=0.4)+
-  facet_grid(cols=vars(errors.function))+
-  labs(x="Dataset proportion (%)",
-       y="Distance to the full dataset") + theme_bw()
+plotDistanceBoxplot.prop(revio_unibe_distances.long)
 ggsave(file.path(results.path,"Revio_UniBe_dataset_distance_boxplot.pdf"))
-
 
 #Sequence table
 seq_tables <- list()
@@ -147,7 +136,8 @@ saveRDS(seq_tables,file.path(results.path, "all_dataset_sequence_table.rds"))
 n=1
 for (ref_name in names(dada2_results_data)){
   cat("[",n,"/",N,"] : ", ref_name,"\n")
-  taxaAssign[[ref_name]] <- assignTaxonomy(seq_tables[[ref_name]], ref.db,multithread = T)
+  seqtab.nochim <- removeBimeraDenovo(seq_tables[[ref_name]], method="consensus", multithread=TRUE, verbose=TRUE)
+  taxaAssign[[ref_name]] <- assignTaxonomy(seqtab.nochim, ref.db,multithread = T)
   n<-n+1
 }
 saveRDS(taxaAssign,file.path(results.path, "all_dataset_taxonomy_assignment.rds"))
