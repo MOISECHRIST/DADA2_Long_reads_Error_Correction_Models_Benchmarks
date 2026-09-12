@@ -83,7 +83,7 @@ paths_dada2_results_data <- list.files(path.alldataset, pattern = "dada_results"
 ref.db <- file.path("refSeq/SILVA-v138.2-16s/silva_nr99_v138.2_toSpecies_trainset.fa.gz")
 
 results.path <- "summary"
-dir.create(results.path)
+dir.create(results.path, showWarnings = F)
 
 #Load data
 learn_errors_data <- readMultiRDS(paths_learn_errors_data)
@@ -119,6 +119,27 @@ plotDistancePoint.prop(revio_unibe_distances.long)
 ggsave(file.path(results.path,"Revio_UniBe_dataset_distance_plot.pdf"))
 plotDistanceBoxplot.prop(revio_unibe_distances.long)
 ggsave(file.path(results.path,"Revio_UniBe_dataset_distance_boxplot.pdf"))
+
+combined_distances.long <- rbind(
+  revio_unibe_distances.long |> mutate(platform="Revio_UniBe"),
+  sequel_unibe_distances.long |> mutate(platform="Sequel_UniBe")
+)
+
+combined_distances.long |>
+  ggplot()+
+  geom_boxplot(aes(x=dataset.prop, y=distances), alpha=0.4)+
+  facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free")+
+  labs(x="Dataset proportion (%)",
+       y="Distance to the full dataset") + theme_bw()
+ggsave(file.path(results.path,"Combined_dataset_distance_boxplot.pdf"))
+
+combined_distances.long |>
+  ggplot()+
+  geom_point(aes(x=dataset.prop, y=distances), alpha=0.4)+
+  facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free")+
+  labs(x="Dataset proportion (%)",
+       y="Distance to the full dataset") + theme_bw()
+ggsave(file.path(results.path,"Combined_dataset_distance_plot.pdf"))
 
 #Sequence table
 seq_tables <- list()
