@@ -10,3 +10,4 @@ refSeq
 .RDataTmp
 summary/*.rds
 summary/*.csv
+results_prop
