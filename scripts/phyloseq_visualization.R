@@ -7,7 +7,6 @@ library(ggplot2, verbose = FALSE, quietly = TRUE); packageVersion("ggplot2")
 
 #From here I start following the tutorial: https://benjjneb.github.io/dada2/tutorial.html 
 #On Bonus: Handoff to phyloseq
-args <- commandArgs(trailingOnly=TRUE)
 
 results.path <- "summary"
 combined.seq_tables.nochim <- readRDS(file.path(results.path, "all_dataset_sequence_table_nochim.rds"))
