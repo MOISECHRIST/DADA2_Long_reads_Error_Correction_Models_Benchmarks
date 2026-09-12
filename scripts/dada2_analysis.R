@@ -31,7 +31,6 @@ seed<-as.numeric(args[4])
 if (is.na(seed)) {
   randomize=FALSE
 } else {
-  set.seed(seed)
   randomize=TRUE
 }
 path.rds <- file.path(path.output, "RDS")
@@ -58,6 +57,9 @@ for(func_name in names(errorEstFunc.list)){
   func <- errorEstFunc.list[[func_name]]
 
   message(paste0("Using the error function : ",func_name))
+  if (! is.na(seed)){
+    set.seed(seed)
+  }
   err_obj <- tryCatch({
     if (func_name == "makeBinnedQualErrfun") {
       learnErrors(

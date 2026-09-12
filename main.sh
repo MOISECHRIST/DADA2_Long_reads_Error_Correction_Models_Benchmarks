@@ -37,16 +37,20 @@ SEED=$3
 data_dir="${DATASET_LIST[${SLURM_ARRAY_TASK_ID}]}"
 echo "Working on : ${data_dir}"
 
-apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir containers/dada2-pipeline.sif \
-  Rscript ./scripts/quality_control_trimming.r "${ALL_DATA_DIR}/${data_dir}" "results/${data_dir}"
+if [ ! -f "results/${data_dir}/Figure/track_filter-trim.csv" ]; then
+  apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir containers/dada2-pipeline.sif \
+    Rscript ./scripts/quality_control_trimming.r "${ALL_DATA_DIR}/${data_dir}" "results/${data_dir}"
+fi
 
 if [ -z "$NBASES" ]; then 
   apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir containers/dada2-pipeline.sif \
   Rscript ./scripts/dada2_analysis.R "results/${data_dir}/Filtered" "results/${data_dir}"
 elif [ -z "$SEED" ]; then 
-  apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir containers/dada2-pipeline.sif \
-    Rscript ./scripts/dada2_analysis.R "results/${data_dir}/Filtered" "results/${data_dir}_${NBASES}_${SEED}" "$NBASES" "$SEED"
-else 
+  mkdir -p "results/${data_dir}_${NBASES}"
   apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir containers/dada2-pipeline.sif \
     Rscript ./scripts/dada2_analysis.R "results/${data_dir}/Filtered" "results/${data_dir}_${NBASES}" "$NBASES"
+else 
+  mkdir -p "results/${data_dir}_${NBASES}_${SEED}"
+  apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir containers/dada2-pipeline.sif \
+    Rscript ./scripts/dada2_analysis.R "results/${data_dir}/Filtered" "results/${data_dir}_${NBASES}_${SEED}" "$NBASES" "$SEED"
 fi
