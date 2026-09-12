@@ -121,49 +121,99 @@ plotDistanceBoxplot.prop(revio_unibe_distances.long)
 ggsave(file.path(results.path,"Revio_UniBe_dataset_distance_boxplot.pdf"))
 
 combined_distances.long <- rbind(
-  revio_unibe_distances.long |> mutate(platform="Revio_UniBe"),
-  sequel_unibe_distances.long |> mutate(platform="Sequel_UniBe")
+  revio_unibe_distances.long |> mutate(platform="Revio UniBe"),
+  sequel_unibe_distances.long |> mutate(platform="Sequel UniBe")
 )
 
 combined_distances.long |>
   ggplot()+
-  geom_boxplot(aes(x=dataset.prop, y=distances), alpha=0.4)+
+  geom_boxplot(aes(x=dataset.prop, y=distances), outliers = F)+
+  geom_jitter(aes(x=dataset.prop, y=distances, colour = dataset.prop), alpha=0.6)+
   facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free")+
   labs(x="Dataset proportion (%)",
-       y="Distance to the full dataset") + theme_bw()
+       y="Distance to the full dataset") + 
+  labs(colour="Dataset\nproportion (%)") + theme_bw()
 ggsave(file.path(results.path,"Combined_dataset_distance_boxplot.pdf"))
 
 combined_distances.long |>
   ggplot()+
-  geom_point(aes(x=dataset.prop, y=distances), alpha=0.4)+
+  geom_jitter(aes(x=dataset.prop, y=distances, colour = dataset.prop), alpha=0.6)+
   facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free")+
   labs(x="Dataset proportion (%)",
-       y="Distance to the full dataset") + theme_bw()
+       y="Distance to the full dataset") + 
+  labs(colour="Dataset\nproportion (%)")+theme_bw()
 ggsave(file.path(results.path,"Combined_dataset_distance_plot.pdf"))
 
 #Sequence table
 seq_tables <- list()
-taxaAssign <- list()
 N <- length(names(dada2_results_data))
+sample.out <- c()
+dataset.prop <- c()
+subset.replicate <- c()
+fastq.files <- c()
+error.func <- c()
+platform <- c()
 n=1
 for (ref_name in names(dada2_results_data)){
   cat("[",n,"/",N,"] : ", ref_name,"\n")
   seq_tables[[ref_name]] <- makeSequenceTable(dada2_results_data[[ref_name]])
+  fastq.files <- c(fastq.files, rownames(seq_tables[[ref_name]]))
+  rownames(seq_tables[[ref_name]]) <- paste0(sub(".rds","",ref_name), "_", rownames(seq_tables[[ref_name]]))
+  sample.out <- c(sample.out, rownames(seq_tables[[ref_name]]))
+  dataset.prop <- c(dataset.prop,
+                    rep(sapply(strsplit(ref_name, "_"), function(x) x[3]),
+                          length(rownames(seq_tables[[ref_name]]))))
+  subset.replicate <- c(subset.replicate,
+                        rep(sapply(strsplit(ref_name, "_"), function(x) x[4]),
+                              length(rownames(seq_tables[[ref_name]])))
+                        )
+  error.func <- c(error.func,
+                rep(sub(".rds","",
+                            sapply(strsplit(ref_name, "_dada_results_"), 
+                                  function(x) x[2])),
+                        length(rownames(seq_tables[[ref_name]])))
+                        )
+  platform <- c(platform,
+                rep(sapply(strsplit(ref_name, "_"), function(x) paste0(x[1],"_",x[2])),
+                    length(rownames(seq_tables[[ref_name]]))))
   n<-n+1
 }
-saveRDS(seq_tables,file.path(results.path, "all_dataset_sequence_table.rds"))
+all.meta.data <- data.frame(
+  fastq.files,
+  platform,
+  dataset.prop,
+  subset.replicate,
+  error.func
+)
+rownames(all.meta.data) <- sample.out
+all.meta.data <- all.meta.data |>
+  mutate(
+    dataset.prop = factor(dataset.prop, levels = c("1", "5", "10", "25", "50", "100"))
+  )
+write.csv(all.meta.data,file.path(results.path, "all_metadata.csv"))
+combined.seq_tables <- mergeSequenceTables(tables=seq_tables)
+saveRDS(combined.seq_tables,file.path(results.path, "all_dataset_sequence_table.rds"))
 
 #Assign taxonomy
-n=1
-for (ref_name in names(dada2_results_data)){
-  cat("[",n,"/",N,"] : ", ref_name,"\n")
-  seqtab.nochim <- removeBimeraDenovo(seq_tables[[ref_name]], method="consensus", multithread=TRUE, verbose=TRUE)
-  taxaAssign[[ref_name]] <- assignTaxonomy(seqtab.nochim, ref.db,multithread = T)
-  n<-n+1
-}
+combined.seq_tables.nochim <- removeBimeraDenovo(combined.seq_tables, method="consensus", multithread=TRUE)
+saveRDS(combined.seq_tables.nochim,file.path(results.path, "all_dataset_sequence_table_nochim.rds"))
+taxaAssign <- assignTaxonomy(combined.seq_tables.nochim, ref.db,
+                             multithread = T)
 saveRDS(taxaAssign,file.path(results.path, "all_dataset_taxonomy_assignment.rds"))
 
+#From here I start following the tutorial: https://benjjneb.github.io/dada2/tutorial.html 
+#On Bonus: Handoff to phyloseq
+ps <- phyloseq(otu_table(combined.seq_tables.nochim, taxa_are_rows=FALSE),
+               sample_data(all.meta.data),
+               tax_table(taxaAssign))
 
+dna <- Biostrings::DNAStringSet(taxa_names(ps))
+names(dna) <- taxa_names(ps)
+ps <- merge_phyloseq(ps, dna)
+taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
 
-
-
+top.taxa <- names(sort(taxa_sums(ps), decreasing=TRUE))
+ps.freq <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
+ps.freq <- prune_taxa(top.taxa, ps.freq)
+plot_bar(ps.freq, x="Day", fill="Family") + 
+  facet_grid(cols=vars(error.func), rows = vars(platform), scales = "free")
