@@ -22,28 +22,56 @@ ps <- phyloseq(otu_table(combined.seq_tables.nochim, taxa_are_rows=FALSE),
                tax_table(taxaAssign))
 
 #Remove seed replicates
+ps.revio_unibe <- ps
 for(prop in c("1", "5", "10", "25", "50")){
   for(seed in 1:10){
-    ps <- prune_samples(!startsWith(sample_names(ps), paste0("Revio_UniBe_",prop, "_",seed,"_")), ps)
+    ps.revio_unibe <- prune_samples(!startsWith(sample_names(ps.revio_unibe), paste0("Revio_UniBe_",prop, "_",seed,"_")), ps.revio_unibe)
+    ps.revio_unibe <- prune_samples(!startsWith(sample_names(ps.revio_unibe), "Sequel_UniBe_"), ps.revio_unibe)
   }
 }
 
+dna <- Biostrings::DNAStringSet(taxa_names(ps.revio_unibe))
+names(dna) <- taxa_names(ps.revio_unibe)
+ps.revio_unibe <- merge_phyloseq(ps.revio_unibe, dna)
+taxa_names(ps.revio_unibe) <- paste0("ASV", seq(ntaxa(ps)))
+
+# --- Revio UniBe---
+ps.revio_unibe <- ps
 for(prop in c("1", "5", "10", "25", "50")){
   for(seed in 1:10){
-    ps <- prune_samples(!startsWith(sample_names(ps), paste0("Sequel_UniBe_",prop, "_",seed,"_")), ps)
+    ps.revio_unibe <- prune_samples(!startsWith(sample_names(ps.revio_unibe), paste0("Revio_UniBe_",prop, "_",seed,"_")), ps.revio_unibe)
+    ps.revio_unibe <- prune_samples(!startsWith(sample_names(ps.revio_unibe), "Sequel_UniBe_"), ps.revio_unibe)
   }
 }
+dna <- Biostrings::DNAStringSet(taxa_names(ps.revio_unibe))
+names(dna) <- taxa_names(ps.revio_unibe)
+ps.revio_unibe <- merge_phyloseq(ps.revio_unibe, dna)
+taxa_names(ps.revio_unibe) <- paste0("ASV", seq(ntaxa(ps.revio_unibe)))
 
-dna <- Biostrings::DNAStringSet(taxa_names(ps))
-names(dna) <- taxa_names(ps)
-ps <- merge_phyloseq(ps, dna)
-taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
-ps
+# --- Sequel UniBe---
+ps.sequel_unibe <- ps
+for(prop in c("1", "5", "10", "25", "50")){
+  for(seed in 1:10){
+    ps.sequel_unibe <- prune_samples(!startsWith(sample_names(ps.sequel_unibe), paste0("Sequel_UniBe_",prop, "_",seed,"_")), ps.sequel_unibe)
+    ps.sequel_unibe <- prune_samples(!startsWith(sample_names(ps.sequel_unibe), "Revio_UniBe_"), ps.sequel_unibe)
+  }
+}
+dna <- Biostrings::DNAStringSet(taxa_names(ps.sequel_unibe))
+names(dna) <- taxa_names(ps.sequel_unibe)
+ps.sequel_unibe <- merge_phyloseq(ps.sequel_unibe, dna)
+taxa_names(ps.sequel_unibe) <- paste0("ASV", seq(ntaxa(ps.sequel_unibe)))
 
-top <- 900
-top.taxa <- names(sort(taxa_sums(ps), decreasing=TRUE))[1:top]
-ps.freq <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
-ps.freq <- prune_taxa(top.taxa, ps.freq)
-plot_bar(ps.freq, x="dataset.prop", fill="Family", ) + 
-  facet_grid(rows = vars(platform), scales = "free")
-ggsave(file.path(results.path,paste0("taxonomic_distribution_top_",top,"_plot.pdf")))
+plotTaxaDistrib <- function(ps, top = 20, fill="Family"){
+  top.taxa <- names(sort(taxa_sums(ps), decreasing=TRUE))[1:top]
+  ps.freq <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
+  ps.freq <- prune_taxa(top.taxa, ps.freq)
+  plot_bar(ps.freq, x="dataset.prop", fill=fill, ) + 
+    facet_grid(cols = vars(error.func)) +
+    labs(x="Dataset proportion (%)")
+}
+
+top <- 30
+plotTaxaDistrib(ps.revio_unibe, top = top)
+ggsave(file.path(results.path,paste0("taxonomic_distrib_top_",top,"_revio_unibe_plot.pdf")))
+plotTaxaDistrib(ps.sequel_unibe, top = top)
+ggsave(file.path(results.path,paste0("taxonomic_distrib_top_",top,"_sequel_unibe_plot.pdf")))
