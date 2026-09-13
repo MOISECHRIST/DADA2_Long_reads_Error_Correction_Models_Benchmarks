@@ -87,6 +87,6 @@ plotTaxaDistrib <- function(ps, top = 20, fill="Family"){
 plot_richness(ps.sequel_unibe, x="dataset.prop", measures=c("Shannon", "Simpson"), color="error.func")+
   labs(x="Dataset proportion (%)",
        color="Error Function")
-
+ggsave(file.path(results.path,paste0("alpha_divsersity_sequel_unibe_plot.pdf")))
 plotTaxaDistrib(ps.sequel_unibe, top = top)
 ggsave(file.path(results.path,paste0("taxonomic_distrib_top_",top,"_sequel_unibe_plot.pdf")))
