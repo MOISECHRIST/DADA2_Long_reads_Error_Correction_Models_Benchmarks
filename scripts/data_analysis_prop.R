@@ -140,7 +140,7 @@ combined_distances.long |>
   labs(x="Dataset proportion (%)",
        y="Distance to the full dataset") + 
   labs(colour="Dataset\nproportion (%)") + theme_bw()
-ggsave(file.path(results.path,"Combined_dataset_distance_boxplot.pdf"))
+ggsave(file.path(results.path,"Combined_dataset_distance_boxplot.png"))
 
 combined_distances.long |>
   ggplot()+
