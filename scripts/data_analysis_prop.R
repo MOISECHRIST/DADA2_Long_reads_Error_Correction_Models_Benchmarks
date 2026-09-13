@@ -240,6 +240,7 @@ ggplot(all_platforms, aes(x = dataset.prop, y = mean, group = err.func, colour =
   labs(x = "Dataset proportion (%)", y = "Average distance to the full dataset",
        color = "Error Function", shape="Adjusted p.value") +
   theme_bw()
+ggsave(file.path(results.path, "summary_statistics_test.pdf"))
 
 #Sequence table
 seq_tables <- list()
