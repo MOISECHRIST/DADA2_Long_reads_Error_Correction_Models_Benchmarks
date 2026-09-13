@@ -74,6 +74,12 @@ plotDistanceBoxplot.prop <- function(distances.long){
          y="Distance to the full dataset") + theme_bw()
 }
 
+anscombe_plot <- function(model){
+  yhat <- fitted(model)
+  res <- resid(model)
+  plot(yhat, res, xlab = "Fitted values", ylab = "Residuals", main = "Tukey-Anscombe plot")
+}
+
 #Input data
 path.alldataset <- file.path(list.files("results", full.names = T), "RDS")
 paths_learn_errors_data <- list.files(path.alldataset, pattern = "learn_error", full.names = T) 
@@ -118,6 +124,8 @@ ggsave(file.path(results.path,"Revio_UniBe_dataset_distance_plot.pdf"))
 plotDistanceBoxplot.prop(revio_unibe_distances.long)
 ggsave(file.path(results.path,"Revio_UniBe_dataset_distance_boxplot.pdf"))
 
+
+#Combination of platforms
 combined_distances.long <- rbind(
   revio_unibe_distances.long |> mutate(platform="Revio UniBe"),
   sequel_unibe_distances.long |> mutate(platform="Sequel UniBe")
@@ -142,6 +150,73 @@ combined_distances.long |>
        y="Distance to the full dataset") + 
   labs(colour="Dataset\nproportion (%)")+theme_bw()
 ggsave(file.path(results.path,"Combined_dataset_distance_plot.pdf"))
+
+
+#Statistics tests
+
+##Revio_UniBe
+results <- list()
+for(err.func in c("loessErrfun.rds", "PacBioErrfun.rds", 
+                  "makeBinnedQualErrfun.rds", "loessErrfun_mod0.rds")){
+  
+  test_by_group <- revio_unibe_distances |>
+    mutate(dataset.prop = factor(dataset.prop, levels = c("100", "1", "5", "10", "25", "50"))) |>
+    group_by(dataset.prop) |>
+    summarise(
+      n         = n(),
+      mean      = mean(.data[[err.func]], na.rm = TRUE),
+      p.value   = tryCatch(wilcox.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
+                           error = function(e) NA_real_),
+      shapiro.p = tryCatch(shapiro.test(.data[[err.func]])$p.value,
+                           error = function(e) NA_real_),
+      .groups = "drop"
+    )|>
+    mutate(err.func = err.func)
+  
+  results[[err.func]] <- test_by_group
+}
+
+all_results <- bind_rows(results) |>
+  mutate(p.adj.bonferroni = p.adjust(p.value, method = "bonferroni"),
+         p.adj.benjamin.hochberg = p.adjust(p.value, method = "BH"))
+all_results <- all_results |> drop_na(shapiro.p)
+write.table(all_results, file.path(results.path, "revio_unibe_summary_test.txt"), row.names = F)
+
+all_results |>
+  dplyr::filter(p.adj.bonferroni > 0.01 | p.adj.benjamin.hochberg >0.01) |>
+  print()
+
+##Sequel_UniBe
+results <- list()
+for(err.func in c("loessErrfun.rds", "PacBioErrfun.rds", 
+                  "loessErrfun_mod0.rds")){
+  test_by_group <- sequel_unibe_distances |>
+    mutate(dataset.prop = factor(dataset.prop, levels = c("100", "1", "5", "10", "25", "50"))) |>
+    group_by(dataset.prop) |>
+    summarise(
+      n         = n(),
+      mean      = mean(.data[[err.func]], na.rm = TRUE),
+      p.value   = tryCatch(wilcox.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
+                           error = function(e) NA_real_),
+      shapiro.p = tryCatch(shapiro.test(.data[[err.func]])$p.value,
+                           error = function(e) NA_real_),
+      .groups = "drop"
+    )|>
+    mutate(err.func = err.func)
+  
+  results[[err.func]] <- test_by_group
+}
+
+all_results <- bind_rows(results) |>
+  mutate(p.adj.bonferroni = p.adjust(p.value, method = "bonferroni"),
+         p.adj.benjamin.hochberg = p.adjust(p.value, method = "BH"))
+all_results <- all_results |> drop_na(shapiro.p)
+
+all_results |>
+  dplyr::filter(p.adj.bonferroni > 0.01 | p.adj.benjamin.hochberg >0.01) |>
+  print()
+
+write.table(all_results, file.path(results.path, "sequel_unibe_summary_test.txt"), row.names = F)
 
 #Sequence table
 seq_tables <- list()
