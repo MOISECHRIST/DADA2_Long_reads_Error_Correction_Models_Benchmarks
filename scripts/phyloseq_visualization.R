@@ -30,10 +30,7 @@ for(prop in c("1", "5", "10", "25", "50")){
   }
 }
 
-dna <- Biostrings::DNAStringSet(taxa_names(ps.revio_unibe))
-names(dna) <- taxa_names(ps.revio_unibe)
-ps.revio_unibe <- merge_phyloseq(ps.revio_unibe, dna)
-taxa_names(ps.revio_unibe) <- paste0("ASV", seq(ntaxa(ps)))
+top <- 50
 
 # --- Revio UniBe---
 ps.revio_unibe <- ps
@@ -47,6 +44,21 @@ dna <- Biostrings::DNAStringSet(taxa_names(ps.revio_unibe))
 names(dna) <- taxa_names(ps.revio_unibe)
 ps.revio_unibe <- merge_phyloseq(ps.revio_unibe, dna)
 taxa_names(ps.revio_unibe) <- paste0("ASV", seq(ntaxa(ps.revio_unibe)))
+
+plot_richness(ps.revio_unibe, x="dataset.prop", measures=c("Shannon", "Simpson"), color="error.func")+
+  labs(x="Dataset proportion (%)",
+       color="Error Function")
+# Warning message:
+#   In estimate_richness(physeq, split = TRUE, measures = measures) :
+#   The data you have provided does not have
+# any singletons. This is highly suspicious. Results of richness
+# estimates (for example) are probably unreliable, or wrong, if you have already
+# trimmed low-abundance taxa from the data.
+# 
+# We recommended that you find the un-trimmed data and retry.
+
+plotTaxaDistrib(ps.revio_unibe, top = top)
+ggsave(file.path(results.path,paste0("taxonomic_distrib_top_",top,"_revio_unibe_plot.pdf")))
 
 # --- Sequel UniBe---
 ps.sequel_unibe <- ps
@@ -70,8 +82,11 @@ plotTaxaDistrib <- function(ps, top = 20, fill="Family"){
     labs(x="Dataset proportion (%)")
 }
 
-top <- 30
-plotTaxaDistrib(ps.revio_unibe, top = top)
-ggsave(file.path(results.path,paste0("taxonomic_distrib_top_",top,"_revio_unibe_plot.pdf")))
+
+
+plot_richness(ps.sequel_unibe, x="dataset.prop", measures=c("Shannon", "Simpson"), color="error.func")+
+  labs(x="Dataset proportion (%)",
+       color="Error Function")
+
 plotTaxaDistrib(ps.sequel_unibe, top = top)
 ggsave(file.path(results.path,paste0("taxonomic_distrib_top_",top,"_sequel_unibe_plot.pdf")))
