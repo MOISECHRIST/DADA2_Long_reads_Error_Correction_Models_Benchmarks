@@ -5,6 +5,17 @@ library(phyloseq, verbose = FALSE, quietly = TRUE); packageVersion("phyloseq")
 library(Biostrings, verbose = FALSE, quietly = TRUE); packageVersion("Biostrings")
 library(ggplot2, verbose = FALSE, quietly = TRUE); packageVersion("ggplot2")
 
+plotTaxaDistrib <- function(ps, top = 20, fill="Family"){
+  top.taxa <- names(sort(taxa_sums(ps), decreasing=TRUE))[1:top]
+  ps.freq <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
+  ps.freq <- prune_taxa(top.taxa, ps.freq)
+  plot_bar(ps.freq, x="dataset.prop", fill=fill, ) + 
+    facet_grid(cols = vars(error.func)) +
+    labs(x="Dataset proportion (%)")
+}
+
+top <- 30
+
 #From here I start following the tutorial: https://benjjneb.github.io/dada2/tutorial.html 
 #On Bonus: Handoff to phyloseq
 
@@ -29,8 +40,6 @@ for(prop in c("1", "5", "10", "25", "50")){
     ps.revio_unibe <- prune_samples(!startsWith(sample_names(ps.revio_unibe), "Sequel_UniBe_"), ps.revio_unibe)
   }
 }
-
-top <- 50
 
 # --- Revio UniBe---
 ps.revio_unibe <- ps
@@ -73,15 +82,6 @@ dna <- Biostrings::DNAStringSet(taxa_names(ps.sequel_unibe))
 names(dna) <- taxa_names(ps.sequel_unibe)
 ps.sequel_unibe <- merge_phyloseq(ps.sequel_unibe, dna)
 taxa_names(ps.sequel_unibe) <- paste0("ASV", seq(ntaxa(ps.sequel_unibe)))
-
-plotTaxaDistrib <- function(ps, top = 20, fill="Family"){
-  top.taxa <- names(sort(taxa_sums(ps), decreasing=TRUE))[1:top]
-  ps.freq <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
-  ps.freq <- prune_taxa(top.taxa, ps.freq)
-  plot_bar(ps.freq, x="dataset.prop", fill=fill, ) + 
-    facet_grid(cols = vars(error.func)) +
-    labs(x="Dataset proportion (%)")
-}
 
 
 
