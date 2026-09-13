@@ -48,6 +48,7 @@ taxa_names(ps.revio_unibe) <- paste0("ASV", seq(ntaxa(ps.revio_unibe)))
 plot_richness(ps.revio_unibe, x="dataset.prop", measures=c("Shannon", "Simpson"), color="error.func")+
   labs(x="Dataset proportion (%)",
        color="Error Function")
+ggsave(file.path(results.path,paste0("alpha_divsersity_revio_unibe_plot.pdf")))
 # Warning message:
 #   In estimate_richness(physeq, split = TRUE, measures = measures) :
 #   The data you have provided does not have
