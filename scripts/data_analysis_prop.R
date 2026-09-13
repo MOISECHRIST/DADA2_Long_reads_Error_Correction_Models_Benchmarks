@@ -218,6 +218,29 @@ all_results |>
 
 write.table(all_results, file.path(results.path, "sequel_unibe_summary_test.txt"), row.names = F)
 
+##Combination and visualization 
+revio  <- read.table(file.path(results.path, "revio_unibe_summary_test.txt"),  header = TRUE) |> mutate(platform = "Revio")
+sequel <- read.table(file.path(results.path, "sequel_unibe_summary_test.txt"), header = TRUE) |> mutate(platform = "Sequel")
+
+all_platforms <- bind_rows(revio, sequel) |>
+  mutate(
+    dataset.prop = factor(dataset.prop, levels = c("100", "1", "5", "10", "25", "50")),
+    signif = case_when(
+      p.adj.bonferroni < 0.001 ~ "< 0.001",
+      p.adj.bonferroni < 0.01  ~ "< 0.01",
+      p.adj.bonferroni < 0.05  ~ "< 0.05",
+      TRUE ~ "ns"
+    )
+  )
+
+ggplot(all_platforms, aes(x = dataset.prop, y = mean, group = err.func, colour = err.func)) +
+  geom_line(position = position_dodge(width = 0.3)) +
+  geom_point(aes(shape = signif), size = 3, position = position_dodge(width = 0.3)) +
+  facet_wrap(~platform, scales = "free_y")  +
+  labs(x = "Dataset proportion (%)", y = "Average distance to the full dataset",
+       color = "Error Function", shape="Adjusted p.value") +
+  theme_bw()
+
 #Sequence table
 seq_tables <- list()
 N <- length(names(dada2_results_data))
