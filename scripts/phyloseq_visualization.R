@@ -4,17 +4,28 @@
 library(phyloseq, verbose = FALSE, quietly = TRUE); packageVersion("phyloseq")
 library(Biostrings, verbose = FALSE, quietly = TRUE); packageVersion("Biostrings")
 library(ggplot2, verbose = FALSE, quietly = TRUE); packageVersion("ggplot2")
+library(dplyr, verbose = FALSE, quietly = TRUE); packageVersion("dplyr") 
 
-plotTaxaDistrib <- function(ps, top = 20, fill="Family"){
-  top.taxa <- names(sort(taxa_sums(ps), decreasing=TRUE))[1:top]
-  ps.freq <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
+plotTaxaDistrib <- function(ps, top = 20, fill = "Family") {
+  top.taxa <- names(sort(taxa_sums(ps), decreasing = TRUE))[1:top]
+  ps.freq <- transform_sample_counts(ps, function(OTU) OTU / sum(OTU))
   ps.freq <- prune_taxa(top.taxa, ps.freq)
-  plot_bar(ps.freq, x="dataset.prop", fill=fill, ) + 
+  
+  df <- psmelt(ps.freq)
+  
+  df_grouped <- df %>%
+    group_by(dataset.prop, error.func, .data[[fill]]) %>%
+    summarise(Abundance = sum(Abundance), .groups = "drop")
+  
+  ggplot(df_grouped, aes(x = factor(dataset.prop), y = Abundance, fill = .data[[fill]])) +
+    geom_col(position = "stack", colour="black") +
     facet_grid(cols = vars(error.func)) +
-    labs(x="Dataset proportion (%)")
+    labs(x = "Dataset proportion (%)", y = "Abondance", fill = fill) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
-top <- 30
+top <- 40
 
 #From here I start following the tutorial: https://benjjneb.github.io/dada2/tutorial.html 
 #On Bonus: Handoff to phyloseq
@@ -67,7 +78,7 @@ ggsave(file.path(results.path,paste0("alpha_divsersity_revio_unibe_plot.pdf")))
 # 
 # We recommended that you find the un-trimmed data and retry.
 
-plotTaxaDistrib(ps.revio_unibe, top = top)
+plotTaxaDistrib(ps.revio_unibe, top = top, fill="Species")
 ggsave(file.path(results.path,paste0("taxonomic_distrib_top_",top,"_revio_unibe_plot.pdf")))
 
 # --- Sequel UniBe---
@@ -89,5 +100,5 @@ plot_richness(ps.sequel_unibe, x="dataset.prop", measures=c("Shannon", "Simpson"
   labs(x="Dataset proportion (%)",
        color="Error Function")
 ggsave(file.path(results.path,paste0("alpha_divsersity_sequel_unibe_plot.pdf")))
-plotTaxaDistrib(ps.sequel_unibe, top = top)
+plotTaxaDistrib(ps.sequel_unibe, top = top, fill = "Species")
 ggsave(file.path(results.path,paste0("taxonomic_distrib_top_",top,"_sequel_unibe_plot.pdf")))

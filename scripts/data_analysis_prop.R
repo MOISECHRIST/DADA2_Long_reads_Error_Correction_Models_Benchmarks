@@ -75,7 +75,7 @@ plotDistanceBoxplot.prop <- function(distances.long){
 }
 
 #Input data
-path.alldataset <- file.path(list.files("results_prop", full.names = T), "RDS")
+path.alldataset <- file.path(list.files("results", full.names = T), "RDS")
 paths_learn_errors_data <- list.files(path.alldataset, pattern = "learn_error", full.names = T) 
 paths_dada2_results_data <- list.files(path.alldataset, pattern = "dada_results", full.names = T) 
 ref.db <- file.path("refSeq/SILVA-v138.2-16s/silva_nr99_v138.2_toSpecies_trainset.fa.gz")
@@ -127,7 +127,8 @@ combined_distances.long |>
   ggplot()+
   geom_boxplot(aes(x=dataset.prop, y=distances), outliers = F)+
   geom_jitter(aes(x=dataset.prop, y=distances, colour = dataset.prop), alpha=0.6)+
-  facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free")+
+  facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free",
+             labeller = labeller(errors.function = label_wrap_gen(width = 100)))+
   labs(x="Dataset proportion (%)",
        y="Distance to the full dataset") + 
   labs(colour="Dataset\nproportion (%)") + theme_bw()
