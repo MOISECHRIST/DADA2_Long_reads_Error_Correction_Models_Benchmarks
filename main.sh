@@ -22,7 +22,7 @@ module purge 2>/dev/null || true
 
 # Path to directory with all data sets
 ALL_DATA_DIR=$1
-if [-z "$ALL_DATA_DIR" ]; then
+if [ -z "$ALL_DATA_DIR" ]; then
   echo "ERROR : Missing parameter"
   echo "USAGE : sbatch $0 /path/to/all/dataset [nbase] [seed]"
   echo "/path/to/all/dataset : A directory with all datasets \n(one directory per dataset eg. /path/to/data where $(ls /path/to/data) gives Revio_UniBe Sequel_UniBe)."
