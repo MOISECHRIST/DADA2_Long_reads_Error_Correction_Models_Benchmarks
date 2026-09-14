@@ -36,7 +36,7 @@ computeDistances <- function(dada2_results_data, dataset_list, errFunc_list, dat
   }
   distances <- as.data.frame(distances)
   dataset.prop <- sapply(strsplit(rownames(distances),"_"), function(x) x[3])
-  dataset.prop[is.na(dataset.prop)] <- "100"
+  dataset.prop[is.na(dataset.prop)] <- "1e+08"
   distances$dataset.prop <- as.numeric(dataset.prop)
   
   used.seed <- sapply(strsplit(rownames(distances),"_"), function(x) x[4])
@@ -51,27 +51,29 @@ transToLong.prop <- function(distances){
                  names_to = "errors.function") |>
     mutate(
       errors.function = sub(".rds","",errors.function),
-      dataset.prop = factor(dataset.prop, levels = c("1", "5", "10", "25", "50", "100"))
+      dataset.prop = factor(format(dataset.prop, scientific = TRUE), 
+                            levels = c("1e+04", "1e+05", "1e+06", "1e+07", "1e+08"))
     )
   return(distances.long)
 }
 
 plotDistancePoint.prop <- function(distances.long){
   distances.long |>
-    ggplot()+
-    geom_point(aes(x=dataset.prop, y=distances), alpha=0.4)+
+    ggplot(aes(x=dataset.prop, y=distances))+
+    geom_jitter(alpha=0.6, size = 3)+
     facet_grid(cols=vars(errors.function))+
-    labs(x="Dataset proportion (%)",
-         y="Distance to the full dataset") + theme_bw()
+    labs(x="Number bases to consider for learning error",
+         y="Distance to the default number") + theme_bw()
 }
 
 plotDistanceBoxplot.prop <- function(distances.long){
   distances.long |>
-    ggplot()+
-    geom_boxplot(aes(x=dataset.prop, y=distances), alpha=0.4)+
+    ggplot(aes(x=dataset.prop, y=distances))+
+    geom_boxplot(alpha=0.4, outliers = F)+
+    geom_jitter(alpha=0.6, size = 3)+
     facet_grid(cols=vars(errors.function))+
-    labs(x="Dataset proportion (%)",
-         y="Distance to the full dataset") + theme_bw()
+    labs(x="Number bases to consider for learning error",
+         y="Distance to the default number") + theme_bw()
 }
 
 anscombe_plot <- function(model){
@@ -81,7 +83,7 @@ anscombe_plot <- function(model){
 }
 
 #Input data
-path.alldataset <- file.path(list.files("results_prop", full.names = T), "RDS")
+path.alldataset <- file.path(list.files("results_nbases", full.names = T), "RDS")
 paths_learn_errors_data <- list.files(path.alldataset, pattern = "learn_error", full.names = T) 
 paths_dada2_results_data <- list.files(path.alldataset, pattern = "dada_results", full.names = T) 
 ref.db <- file.path("refSeq/SILVA-v138.2-16s/silva_nr99_v138.2_toSpecies_trainset.fa.gz")
@@ -104,9 +106,9 @@ sequel_unibe_distances <- computeDistances(dada2_results_data,
 
 sequel_unibe_distances.long <- transToLong.prop(sequel_unibe_distances)
 plotDistancePoint.prop(sequel_unibe_distances.long)
-ggsave(file.path(results.path,"Sequel_UniBe_dataset_distance_plot.pdf"))
+ggsave(file.path(results.path,"nbases_Sequel_UniBe_dataset_distance_plot.pdf"))
 plotDistanceBoxplot.prop(sequel_unibe_distances.long)
-ggsave(file.path(results.path,"Sequel_UniBe_dataset_distance_boxplot.pdf"))
+ggsave(file.path(results.path,"nbases_Sequel_UniBe_dataset_distance_boxplot.pdf"))
 
 #Revio_UniBe Distances 
 revio_unibe_dataset <- names(dada2_results_data)[startsWith(names(dada2_results_data),"Revio_UniBe")]
@@ -120,9 +122,9 @@ revio_unibe_distances <- computeDistances(dada2_results_data,
 
 revio_unibe_distances.long <- transToLong.prop(revio_unibe_distances)
 plotDistancePoint.prop(revio_unibe_distances.long)
-ggsave(file.path(results.path,"Revio_UniBe_dataset_distance_plot.pdf"))
+ggsave(file.path(results.path,"nbases_Revio_UniBe_dataset_distance_plot.pdf"))
 plotDistanceBoxplot.prop(revio_unibe_distances.long)
-ggsave(file.path(results.path,"Revio_UniBe_dataset_distance_boxplot.pdf"))
+ggsave(file.path(results.path,"nbases_Revio_UniBe_dataset_distance_boxplot.pdf"))
 
 
 #Combination of platforms
@@ -140,7 +142,7 @@ combined_distances.long |>
   labs(x="Dataset proportion (%)",
        y="Distance to the full dataset") + 
   labs(colour="Dataset\nproportion (%)") + theme_bw()
-ggsave(file.path(results.path,"Combined_dataset_distance_boxplot.png"))
+ggsave(file.path(results.path,"nbases_Combined_dataset_distance_boxplot.png"))
 
 combined_distances.long |>
   ggplot()+
@@ -149,7 +151,7 @@ combined_distances.long |>
   labs(x="Dataset proportion (%)",
        y="Distance to the full dataset") + 
   labs(colour="Dataset\nproportion (%)")+theme_bw()
-ggsave(file.path(results.path,"Combined_dataset_distance_plot.pdf"))
+ggsave(file.path(results.path,"nbases_Combined_dataset_distance_plot.pdf"))
 
 
 #Statistics tests
@@ -160,7 +162,7 @@ for(err.func in c("loessErrfun.rds", "PacBioErrfun.rds",
                   "makeBinnedQualErrfun.rds", "loessErrfun_mod0.rds")){
   
   test_by_group <- revio_unibe_distances |>
-    mutate(dataset.prop = factor(dataset.prop, levels = c("100", "1", "5", "10", "25", "50"))) |>
+    mutate(dataset.prop = factor(format(dataset.prop, scientific = TRUE), levels = c("1e+04", "1e+05", "1e+06", "1e+07"))) |>
     group_by(dataset.prop) |>
     summarise(
       n         = n(),
@@ -182,7 +184,7 @@ all_results <- bind_rows(results) |>
   mutate(p.adj.bonferroni = p.adjust(p.value, method = "bonferroni"),
          p.adj.benjamin.hochberg = p.adjust(p.value, method = "BH"))
 all_results <- all_results |> drop_na(shapiro.p)
-write.table(all_results, file.path(results.path, "revio_unibe_summary_test.txt"), row.names = F)
+write.table(all_results, file.path(results.path, "nbases_revio_unibe_summary_test.txt"), row.names = F)
 
 all_results |>
   dplyr::filter(p.adj.bonferroni > 0.01 | p.adj.benjamin.hochberg >0.01) |>
@@ -193,7 +195,7 @@ results <- list()
 for(err.func in c("loessErrfun.rds", "PacBioErrfun.rds", 
                   "loessErrfun_mod0.rds")){
   test_by_group <- sequel_unibe_distances |>
-    mutate(dataset.prop = factor(dataset.prop, levels = c("100", "1", "5", "10", "25", "50"))) |>
+    mutate(dataset.prop = factor(format(dataset.prop, scientific = TRUE), levels = c("1e+04", "1e+05", "1e+06", "1e+07"))) |>
     group_by(dataset.prop) |>
     summarise(
       n         = n(),
@@ -201,9 +203,9 @@ for(err.func in c("loessErrfun.rds", "PacBioErrfun.rds",
       shapiro.p = tryCatch(shapiro.test(.data[[err.func]])$p.value,
                            error = function(e) NA_real_),
       p.value   = if_else(shapiro.p > 0.05, tryCatch(t.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
-                                                     error = function(e) NA_real_),
-                          tryCatch(wilcox.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
-                                   error = function(e) NA_real_)),
+                           error = function(e) NA_real_),
+      tryCatch(wilcox.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
+               error = function(e) NA_real_)),
       .groups = "drop"
     )|>
     mutate(err.func = err.func)
@@ -220,15 +222,15 @@ all_results |>
   dplyr::filter(p.adj.bonferroni > 0.01 | p.adj.benjamin.hochberg >0.01) |>
   print()
 
-write.table(all_results, file.path(results.path, "sequel_unibe_summary_test.txt"), row.names = F)
+write.table(all_results, file.path(results.path, "nbases_sequel_unibe_summary_test.txt"), row.names = F)
 
 ##Combination and visualization 
-revio  <- read.table(file.path(results.path, "revio_unibe_summary_test.txt"),  header = TRUE) |> mutate(platform = "Revio UniBe")
-sequel <- read.table(file.path(results.path, "sequel_unibe_summary_test.txt"), header = TRUE) |> mutate(platform = "Sequel UniBe")
+revio  <- read.table(file.path(results.path, "nbases_revio_unibe_summary_test.txt"),  header = TRUE) |> mutate(platform = "Revio UniBe")
+sequel <- read.table(file.path(results.path, "nbases_sequel_unibe_summary_test.txt"), header = TRUE) |> mutate(platform = "Sequel UniBe")
 
 all_platforms <- bind_rows(revio, sequel) |>
   mutate(
-    dataset.prop = factor(dataset.prop, levels = c("100", "1", "5", "10", "25", "50")),
+    dataset.prop = factor(format(dataset.prop, scientific = TRUE), levels = c("1e+04", "1e+05", "1e+06", "1e+07")),
     signif = case_when(
       p.adj.bonferroni < 0.001 ~ "< 0.001",
       p.adj.bonferroni < 0.01  ~ "< 0.01",
@@ -244,7 +246,7 @@ ggplot(all_platforms, aes(x = dataset.prop, y = mean, group = err.func, colour =
   labs(x = "Dataset proportion (%)", y = "Average distance to the full dataset",
        color = "Error Function", shape="Adjusted p.value") +
   theme_bw()
-ggsave(file.path(results.path, "summary_statistics_test.pdf"))
+ggsave(file.path(results.path, "nbases_summary_statistics_test.pdf"))
 
 #Sequence table
 seq_tables <- list()
@@ -290,15 +292,15 @@ all.meta.data <- data.frame(
 rownames(all.meta.data) <- sample.out
 all.meta.data <- all.meta.data |>
   mutate(
-    dataset.prop = factor(dataset.prop, levels = c("1", "5", "10", "25", "50", "100"))
+    dataset.prop = factor(format(dataset.prop, scientific = TRUE), levels = c("1e+04", "1e+05", "1e+06", "1e+07"))
   )
-write.csv(all.meta.data,file.path(results.path, "all_metadata.csv"))
+write.csv(all.meta.data,file.path(results.path, "nbases_all_metadata.csv"))
 combined.seq_tables <- mergeSequenceTables(tables=seq_tables)
-saveRDS(combined.seq_tables,file.path(results.path, "all_dataset_sequence_table.rds"))
+saveRDS(combined.seq_tables,file.path(results.path, "nbases_all_dataset_sequence_table.rds"))
 
 #Assign taxonomy
 combined.seq_tables.nochim <- removeBimeraDenovo(combined.seq_tables, method="consensus", multithread=TRUE)
-saveRDS(combined.seq_tables.nochim,file.path(results.path, "all_dataset_sequence_table_nochim.rds"))
+saveRDS(combined.seq_tables.nochim,file.path(results.path, "nbases_all_dataset_sequence_table_nochim.rds"))
 taxaAssign <- assignTaxonomy(combined.seq_tables.nochim, ref.db,
                              multithread = T)
-saveRDS(taxaAssign,file.path(results.path, "all_dataset_taxonomy_assignment.rds"))
+saveRDS(taxaAssign,file.path(results.path, "nbases_all_dataset_taxonomy_assignment.rds"))

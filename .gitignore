@@ -11,3 +11,4 @@ refSeq
 summary/*.rds
 summary/*.csv
 results_prop
+results_nbases
