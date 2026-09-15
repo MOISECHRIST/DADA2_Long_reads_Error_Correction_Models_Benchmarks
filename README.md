@@ -15,3 +15,13 @@ All the important plots are in the summary folder
 - Sequel UniBe dataset
 
 ![plot4](summary/taxonomic_distrib_top_100_sequel_unibe_plot.png)
+
+### nbases sampling approach 
+
+#### Distance to the full dataset comparison
+
+#### Taxonomy Comparison
+
+- Revio UniBe dataset
+
+- Sequel UniBe dataset
