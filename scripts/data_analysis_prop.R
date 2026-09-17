@@ -302,3 +302,7 @@ saveRDS(combined.seq_tables.nochim,file.path(results.path, "all_dataset_sequence
 taxaAssign <- assignTaxonomy(combined.seq_tables.nochim, ref.db,
                              multithread = T)
 saveRDS(taxaAssign,file.path(results.path, "all_dataset_taxonomy_assignment.rds"))
+
+
+message("Done.")
+quit(save = "no", status = 0)

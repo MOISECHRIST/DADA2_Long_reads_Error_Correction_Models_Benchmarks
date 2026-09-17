@@ -52,26 +52,5 @@ write.csv(track, file.path(path.figures, "track_filter-trim.csv"))
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+message("Done.")
+quit(save = "no", status = 0)

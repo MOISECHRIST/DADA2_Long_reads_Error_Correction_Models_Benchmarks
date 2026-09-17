@@ -95,3 +95,5 @@ dd_res <- dada(path.filts, err=err_obj, multithread=TRUE)
 
 saveRDS(dd_res, file.path(path.rds, paste0("dada_results_",func_name,".rds")))
 
+message("Done.")
+quit(save = "no", status = 0)

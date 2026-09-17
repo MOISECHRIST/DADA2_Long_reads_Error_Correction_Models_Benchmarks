@@ -102,3 +102,7 @@ plot_richness(ps.sequel_unibe, x="dataset.prop", measures=c("Shannon", "Simpson"
 ggsave(file.path(results.path,paste0("alpha_divsersity_sequel_unibe_plot.pdf")))
 plotTaxaDistrib(ps.sequel_unibe, top = top, fill = "Species")
 ggsave(file.path(results.path,paste0("taxonomic_distrib_top_",top,"_sequel_unibe_plot.pdf")))
+
+
+message("Done.")
+quit(save = "no", status = 0)
