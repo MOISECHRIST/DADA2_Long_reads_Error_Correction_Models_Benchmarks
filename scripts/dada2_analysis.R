@@ -64,9 +64,6 @@ if (! is.na(seed)){
 }
 start_process.learnError <- Sys.time()
 
-# Calcul de la différence
-temps_total <- fin - debut
-print(temps_total)
 err_obj <- tryCatch({
   if (func_name == "makeBinnedQualErrfun") {
     learnErrors(
