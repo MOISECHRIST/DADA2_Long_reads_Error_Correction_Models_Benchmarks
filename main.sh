@@ -12,8 +12,8 @@
 #SBATCH --mail-type=start,end,fail
 #SBATCH --job-name="dada2_workflow"
 #SBATCH --mem=150GB
-#SBATCH --cpus-per-task=16
-#SBATCH --time=144:00:00
+#SBATCH --cpus-per-task=20
+#SBATCH --time=120:00:00
 #SBATCH --error=/data/users/%u/research_project/.log/errors/%x_%j.err
 #SBATCH --output=/data/users/%u/research_project/.log/output/%x_%j.out
 
@@ -21,7 +21,7 @@ set -euo pipefail
 module purge 2>/dev/null || true 
 
 # Path to directory with all data sets
-ALL_DATA_DIR=$1
+ALL_DATA_DIR=${1:-}
 if [ -z "$ALL_DATA_DIR" ]; then
   echo "ERROR : Missing parameter"
   echo "USAGE : sbatch $0 /path/to/all/dataset [func_name] [nbase] [seed]"
@@ -32,9 +32,9 @@ if [ -z "$ALL_DATA_DIR" ]; then
   exit 1
 fi
 DATASET_LIST=($(ls "$ALL_DATA_DIR"))
-FUNC_NAME=$2
-NBASES=$3
-SEED=$4
+FUNC_NAME=${2:-loessErrfun} 
+NBASES=${3:-}
+SEED=${4:-}  
 
 data_dir="${DATASET_LIST[${SLURM_ARRAY_TASK_ID}]}"
 echo "Working on : ${data_dir}"
