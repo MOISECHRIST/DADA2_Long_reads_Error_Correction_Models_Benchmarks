@@ -1,0 +1,41 @@
+#!/bin/bash
+
+##------------------------------------------------------------------------
+## Author : MEKA Moise
+## Email : moise.meka@students.unibe.ch
+## Description : With this bash script, I will run dada2 workflow (QC, Filter, Trimming, Learn Errors, Denoising) on my dataset 
+## Creation date : 08-09-2026
+##------------------------------------------------------------------------
+
+#SBATCH --partition=pibu_el8
+#SBATCH --mail-user=moise.meka@students.unibe.ch
+#SBATCH --mail-type=start,end,fail
+#SBATCH --job-name="dada2_workflow"
+#SBATCH --mem=150GB
+#SBATCH --cpus-per-task=20
+#SBATCH --time=02:00:00
+#SBATCH --error=/data/users/%u/research_project/.log/errors/%x_%j.err
+#SBATCH --output=/data/users/%u/research_project/.log/output/%x_%j.out
+
+set -euo pipefail
+module purge 2>/dev/null || true 
+
+# Path to directory with all data sets
+ALL_DATA_DIR=${1:-}
+if [ -z "$ALL_DATA_DIR" ]; then
+  echo "ERROR : Missing parameter"
+  echo "USAGE : sbatch $0 /path/to/all/dataset"
+  echo "/path/to/all/dataset : A directory with all datasets \n(one directory per dataset eg. /path/to/data where $(ls /path/to/data) gives Revio_UniBe Sequel_UniBe)." 
+  exit 1
+fi
+
+DATASET_LIST=($(ls "$ALL_DATA_DIR")) 
+
+data_dir="${DATASET_LIST[${SLURM_ARRAY_TASK_ID}]}"
+echo "Working on : ${data_dir}"
+
+
+if [ ! -f "results/${data_dir}/Figure/track_filter-trim.csv" ]; then
+  apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir containers/dada2-pipeline.sif \
+    Rscript ./scripts/quality_control_trimming.r "${ALL_DATA_DIR}/${data_dir}" "results/${data_dir}"
+fi

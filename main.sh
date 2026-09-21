@@ -42,11 +42,6 @@ echo "Estimation error function : ${FUNC_NAME}"
 echo "nbases : ${NBASES}"
 echo "SEED : ${SEED}"
 
-if [ ! -f "results/${data_dir}/Figure/track_filter-trim.csv" ]; then
-  apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir containers/dada2-pipeline.sif \
-    Rscript ./scripts/quality_control_trimming.r "${ALL_DATA_DIR}/${data_dir}" "results/${data_dir}"
-fi
-
 if [ -z "$NBASES" ]; then 
   apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir containers/dada2-pipeline.sif \
   Rscript ./scripts/dada2_analysis.R "results/${data_dir}/Filtered" "results/${data_dir}" "${FUNC_NAME}"
