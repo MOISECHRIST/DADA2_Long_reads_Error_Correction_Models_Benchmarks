@@ -284,7 +284,3 @@ loessErrfun_mod4 <- function(trans) {
   # Return
   return(err)
 }
-
-
-message("Done.")
-quit(save = "no", status = 0)
