@@ -108,7 +108,7 @@ time_df <- data.frame(start_time=c(start_process.learnError, start_process.denoi
   end_time = c(end_process.learnError, end_process.denoising),
   process_name=c("learnError", "Denoising")) 
 
-write.csv(time_df, file.path(path.rds, paste0("execution_time", func_name,".csv")))
+write.csv(time_df, file.path(path.rds, paste0("execution_time_", func_name,".csv")))
 
 message("Done.")
 quit(save = "no", status = 0)
