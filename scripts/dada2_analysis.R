@@ -8,7 +8,7 @@ library(tidyr, verbose = FALSE, quietly = TRUE); packageVersion("tidyr")
 #Import my functions
 source("scripts/functions.R")
 
-#Check whether the number of parameters is 2
+#Check whether the number of parameters
 args <- commandArgs(trailingOnly=TRUE)
 
 if(length(args)<2){
@@ -62,6 +62,11 @@ message(paste0("Using the error function : ",func_name))
 if (! is.na(seed)){
   set.seed(seed)
 }
+start_process.learnError <- Sys.time()
+
+# Calcul de la différence
+temps_total <- fin - debut
+print(temps_total)
 err_obj <- tryCatch({
   if (func_name == "makeBinnedQualErrfun") {
     learnErrors(
@@ -90,10 +95,20 @@ if (is.null(err_obj) || is.null(err_obj$err_out)) {
   next
 }
 
+end_process.learnError <- Sys.time()
+
 saveRDS(err_obj, file.path(path.rds, paste0("learn_error_data_",func_name,".rds")))
+
+start_process.denoising <- Sys.time()
 dd_res <- dada(path.filts, err=err_obj, multithread=TRUE)
+end_process.denoising <- Sys.time()
 
 saveRDS(dd_res, file.path(path.rds, paste0("dada_results_",func_name,".rds")))
+time_df <- data.frame(start_time=c(start_process.learnError, start_process.denoising), 
+  end_time = c(end_process.learnError, end_process.denoising),
+  process_name=c("learnError", "Denoising")) 
+
+write.csv(time_df, file.path(path.rds, paste0("execution_time", func_name,".csv")))
 
 message("Done.")
 quit(save = "no", status = 0)

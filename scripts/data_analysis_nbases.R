@@ -83,7 +83,7 @@ anscombe_plot <- function(model){
 }
 
 #Input data
-path.alldataset <- file.path(list.files("results_nbases", full.names = T), "RDS")
+path.alldataset <- file.path(list.files("results", full.names = T), "RDS")
 paths_learn_errors_data <- list.files(path.alldataset, pattern = "learn_error", full.names = T) 
 paths_dada2_results_data <- list.files(path.alldataset, pattern = "dada_results", full.names = T) 
 ref.db <- file.path("refSeq/SILVA-v138.2-16s/silva_nr99_v138.2_toSpecies_trainset.fa.gz")

@@ -13,7 +13,7 @@
 #SBATCH --job-name="dada2_workflow"
 #SBATCH --mem=150GB
 #SBATCH --cpus-per-task=16
-#SBATCH --time=120:00:00
+#SBATCH --time=144:00:00
 #SBATCH --error=/data/users/%u/research_project/.log/errors/%x_%j.err
 #SBATCH --output=/data/users/%u/research_project/.log/output/%x_%j.out
 
