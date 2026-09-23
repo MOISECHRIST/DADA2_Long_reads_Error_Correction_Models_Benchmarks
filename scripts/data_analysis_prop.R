@@ -23,7 +23,7 @@ readMultiCSV <- function(list_of_paths){
     res[[ref_name]] <- read.csv(file_path)
     res[[ref_name]]$X <- NULL
     tmp <- sapply(strsplit(ref_name , "_execution_time_"), function(x) x[1])
-    res[[ref_name]]$platform <- sapply(strsplit(tmp , "_"), function(x) paste(x[1], x[2], sep = "_"))
+    res[[ref_name]]$platform <- sapply(strsplit(tmp , "_"), function(x) paste(x[1], x[2], sep = " "))
     res[[ref_name]]$dataset.prop <- sapply(strsplit(tmp , "_"), function(x) x[3])
     res[[ref_name]]$used.seed <- sapply(strsplit(tmp , "_"), function(x) x[4])
     res[[ref_name]]$errors.function <- sub(".csv","",sapply(strsplit(ref_name , "_execution_time_"), function(x) x[2]))
@@ -101,13 +101,12 @@ plotDistanceBoxplot.prop <- function(distances.long){
 plotExecutionTimeBoxplot.prop <- function(execution.time.long){
   execution.time.long |>
     ggplot()+
-    geom_boxplot(aes(x=dataset.prop, y=duration), outliers = F)+
-    geom_jitter(aes(x=dataset.prop, y=duration, colour = process_name), alpha=0.6)+
+    geom_boxplot(aes(x=dataset.prop, y=duration, colour = process_name), alpha=0.6)+
     facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free",
                labeller = labeller(errors.function = label_wrap_gen(width = 100)))+
     labs(x="Dataset proportion (%)",
-         y="Execution time (s)",
-          colour="Process") + theme_bw()
+         y="Learn Error Execution Time (s)",
+         colour = "Process Name") + theme_bw()
 }
 
 #Input data
@@ -225,6 +224,8 @@ all_results |>
   dplyr::filter(p.adj.bonferroni > 0.01 | p.adj.benjamin.hochberg >0.01) |>
   print()
 
+write.table(all_results, file.path(results.path, "revio_unibe_summary_test.txt"), row.names = F)
+
 ##Sequel_UniBe
 results <- list()
 for(err.func in c("loessErrfun.rds", "PacBioErrfun.rds", 
@@ -281,7 +282,7 @@ ggplot(all_platforms, aes(x = dataset.prop, y = mean, group = err.func, colour =
   labs(x = "Dataset proportion (%)", y = "Average distance to the full dataset",
        color = "Error Function", shape="Adjusted p.value") +
   theme_bw()
-ggsave(file.path(results.path, "summary_statistics_test.pdf"))
+ggsave(file.path(results.path, "summary_statistics_test.png"))
 
 #Sequence table
 seq_tables <- list()

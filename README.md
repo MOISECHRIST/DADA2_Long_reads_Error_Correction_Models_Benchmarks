@@ -2,6 +2,10 @@ All the important plots are in the summary folder
 
 ### Fastq proportional sampling approach
 
+#### Execution time
+
+![plot0](summary/Execution_Time_boxplot.png)
+
 #### Distance to the full dataset comparison
 
 ![plot1](summary/Combined_dataset_distance_boxplot.png) ![plot2](summary/summary_statistics_test.png)
@@ -16,7 +20,7 @@ All the important plots are in the summary folder
 
 ![plot4](summary/taxonomic_distrib_top_100_sequel_unibe_plot.png)
 
-### nbases sampling approach 
+### nbases sampling approach
 
 #### Distance to the full dataset comparison
 
