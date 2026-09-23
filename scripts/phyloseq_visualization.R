@@ -25,7 +25,7 @@ plotTaxaDistrib <- function(ps, top = 20, fill = "Family") {
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
-top <- 40
+top <- 100
 
 #From here I start following the tutorial: https://benjjneb.github.io/dada2/tutorial.html 
 #On Bonus: Handoff to phyloseq
