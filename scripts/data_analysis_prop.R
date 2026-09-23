@@ -16,6 +16,18 @@ readMultiRDS <- function(list_of_paths){
   return(res)
 }
 
+readMultiCSV <- function(list_of_paths){
+  res <- list()
+  for(file_path in list_of_paths){
+    ref_name <- paste0(basename(dirname(dirname(file_path))), "_", basename(file_path))
+    res[[ref_name]] <- read.csv(file_path)
+    res[[ref_name]]$X <- NULL
+  }
+  return(
+    bind_rows(res, .id = "re")
+  )
+}
+
 computeDistances <- function(dada2_results_data, dataset_list, errFunc_list, dataset_name){
   distances <- list()
   for(item1 in errFunc_list){
@@ -84,6 +96,7 @@ anscombe_plot <- function(model){
 path.alldataset <- file.path(list.files("results_prop", full.names = T), "RDS")
 paths_learn_errors_data <- list.files(path.alldataset, pattern = "learn_error", full.names = T) 
 paths_dada2_results_data <- list.files(path.alldataset, pattern = "dada_results", full.names = T) 
+paths_exec_times <- list.files(path.alldataset, pattern = "execution_time", full.names = T)
 ref.db <- file.path("refSeq/SILVA-v138.2-16s/silva_nr99_v138.2_toSpecies_trainset.fa.gz")
 
 results.path <- "summary"
@@ -92,6 +105,7 @@ dir.create(results.path, showWarnings = F)
 #Load data
 learn_errors_data <- readMultiRDS(paths_learn_errors_data)
 dada2_results_data <- readMultiRDS(paths_dada2_results_data)
+exec_times_data <- readMultiCSV(paths_exec_times)
 
 #Sequel_UniBe Distances
 sequel_unibe_dataset <- names(dada2_results_data)[startsWith(names(dada2_results_data),"Sequel_UniBe")]
