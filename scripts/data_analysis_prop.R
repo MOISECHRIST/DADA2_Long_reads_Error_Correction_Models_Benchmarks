@@ -102,13 +102,12 @@ plotExecutionTimeBoxplot.prop <- function(execution.time.long){
   execution.time.long |>
     ggplot()+
     geom_boxplot(aes(x=dataset.prop, y=duration), outliers = F)+
-    geom_jitter(aes(x=dataset.prop, y=duration, colour = dataset.prop), alpha=0.6)+
+    geom_jitter(aes(x=dataset.prop, y=duration, colour = process_name), alpha=0.6)+
     facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free",
                labeller = labeller(errors.function = label_wrap_gen(width = 100)))+
-    facet_grid(cols=vars(errors.function))+
     labs(x="Dataset proportion (%)",
          y="Execution time (s)",
-          colour="Dataset\nproportion (%)") + theme_bw()
+          colour="Process") + theme_bw()
 }
 
 #Input data
@@ -125,7 +124,7 @@ dir.create(results.path, showWarnings = F)
 learn_errors_data <- readMultiRDS(paths_learn_errors_data)
 dada2_results_data <- readMultiRDS(paths_dada2_results_data)
 exec_times_data <- readMultiCSV(paths_exec_times)
-
+message(cat("Platforms : ", unique(exec_times_data$platform)))
 
 #Execution time plot 
 plotExecutionTimeBoxplot.prop(exec_times_data)
