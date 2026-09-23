@@ -22,9 +22,21 @@ readMultiCSV <- function(list_of_paths){
     ref_name <- paste0(basename(dirname(dirname(file_path))), "_", basename(file_path))
     res[[ref_name]] <- read.csv(file_path)
     res[[ref_name]]$X <- NULL
+    tmp <- sapply(strsplit(ref_name , "_execution_time_"), function(x) x[1])
+    res[[ref_name]]$platform <- sapply(strsplit(tmp , "_"), function(x) paste(x[1], x[2], sep = "_"))
+    res[[ref_name]]$dataset.prop <- sapply(strsplit(tmp , "_"), function(x) x[3])
+    res[[ref_name]]$used.seed <- sapply(strsplit(tmp , "_"), function(x) x[4])
+    res[[ref_name]]$errors.function <- sub(".csv","",sapply(strsplit(ref_name , "_execution_time_"), function(x) x[2]))
+    
   }
+  res <- bind_rows(res)
+  res$dataset.prop[is.na(res$dataset.prop)] <- 100
+  res$dataset.prop = factor(res$dataset.prop, levels = c("1", "5", "10", "25", "50", "100"))
+  res$end_time <- as.POSIXct(res$end_time)
+  res$start_time <- as.POSIXct(res$start_time)
+  res$duration <- difftime(res$end_time, res$start_time, units = "secs")
   return(
-    bind_rows(res, .id = "re")
+    res
   )
 }
 
@@ -86,10 +98,17 @@ plotDistanceBoxplot.prop <- function(distances.long){
          y="Distance to the full dataset") + theme_bw()
 }
 
-anscombe_plot <- function(model){
-  yhat <- fitted(model)
-  res <- resid(model)
-  plot(yhat, res, xlab = "Fitted values", ylab = "Residuals", main = "Tukey-Anscombe plot")
+plotExecutionTimeBoxplot.prop <- function(execution.time.long){
+  execution.time.long |>
+    ggplot()+
+    geom_boxplot(aes(x=dataset.prop, y=duration), outliers = F)+
+    geom_jitter(aes(x=dataset.prop, y=duration, colour = dataset.prop), alpha=0.6)+
+    facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free",
+               labeller = labeller(errors.function = label_wrap_gen(width = 100)))+
+    facet_grid(cols=vars(errors.function))+
+    labs(x="Dataset proportion (%)",
+         y="Execution time (s)",
+          colour="Dataset\nproportion (%)") + theme_bw()
 }
 
 #Input data
@@ -106,6 +125,11 @@ dir.create(results.path, showWarnings = F)
 learn_errors_data <- readMultiRDS(paths_learn_errors_data)
 dada2_results_data <- readMultiRDS(paths_dada2_results_data)
 exec_times_data <- readMultiCSV(paths_exec_times)
+
+
+#Execution time plot 
+plotExecutionTimeBoxplot.prop(exec_times_data)
+ggsave(file.path(results.path,"Execution_Time_boxplot.pdf")) 
 
 #Sequel_UniBe Distances
 sequel_unibe_dataset <- names(dada2_results_data)[startsWith(names(dada2_results_data),"Sequel_UniBe")]
