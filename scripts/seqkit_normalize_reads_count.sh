@@ -10,19 +10,28 @@
 #SBATCH --partition=pibu_el8
 #SBATCH --mail-user=moise.meka@students.unibe.ch
 #SBATCH --mail-type=start,end,fail
-#SBATCH --job-name="data_analysis_nbases"
+#SBATCH --job-name="seqkit_sampling"
 #SBATCH --mem=150GB
 #SBATCH --cpus-per-task=16
 #SBATCH --time=20:00:00
 #SBATCH --error=/data/users/%u/research_project/.log/errors/%x_%j.err
 #SBATCH --output=/data/users/%u/research_project/.log/output/%x_%j.out
 
-PROCESS=${1:-1}
+set -euo pipefail
 
-if [ $PROCESS -eq 1 ]; then
-    apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir ./containers/dada2-pipeline-1.3.sif \
-    Rscript ./scripts/data_analysis_prop.R
-else 
-    apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir ./containers/dada2-pipeline-1.3.sif \
-        Rscript ./scripts/data_analysis_nbases.R
-fi
+# Load required module
+module load SeqKit/2.6.1
+
+# Define variables and constants
+DATA_DIR=$1
+SEED=${2:-41}
+THREADS=$SLURM_CPUS_PER_TASK
+OUTDIR="data_normalized/${SEED}"
+MIN_COUNT=$(seqkit stats -j "$THREADS" "${DATA_DIR}/*/*" | awk 'NR>1 {print $4}' | sed 's/,//g' | sort -n | head -n 1)
+
+for fastq_file in "$DATA_DIR"/*/*.fastq*; do
+    dataset=$(basename $(dirname $fastq_file)) 
+    mkdir -p "${OUTDIR}/${dataset}"
+    out_file="${OUTDIR}/${dataset}/$(basename "$fastq_file")"
+    seqkit sample --threads "$THREADS" --rand-seed "$SEED" --number "$MIN_COUNT" "$fastq_file" | gzip > "$out_file"
+done

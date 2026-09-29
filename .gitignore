@@ -1,4 +1,4 @@
-data
+data*
 .Rproj.user
 results
 containers
@@ -8,7 +8,7 @@ containers
 Rplots.pdf
 refSeq
 .RDataTmp
-summary/*.rds
-summary/*.csv
+summary/*/*.rds
+summary/*/*.csv
 results_prop
 results_nbases

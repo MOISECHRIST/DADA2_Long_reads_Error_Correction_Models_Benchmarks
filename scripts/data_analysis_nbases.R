@@ -16,6 +16,31 @@ readMultiRDS <- function(list_of_paths){
   return(res)
 }
 
+readMultiCSV <- function(list_of_paths){
+  res <- list()
+  for(file_path in list_of_paths){
+    ref_name <- paste0(basename(dirname(dirname(file_path))), "_", basename(file_path))
+    res[[ref_name]] <- read.csv(file_path)
+    res[[ref_name]]$X <- NULL
+    tmp <- sapply(strsplit(ref_name , "_execution_time_"), function(x) x[1])
+    res[[ref_name]]$platform <- sapply(strsplit(tmp , "_"), function(x) paste(x[1], x[2], sep = " "))
+    res[[ref_name]]$dataset.prop <- sapply(strsplit(tmp , "_"), function(x) x[3])
+    res[[ref_name]]$used.seed <- sapply(strsplit(tmp , "_"), function(x) x[4])
+    res[[ref_name]]$errors.function <- sub(".csv","",sapply(strsplit(ref_name , "_execution_time_"), function(x) x[2]))
+    
+  }
+  res <- bind_rows(res)
+  res$dataset.prop[is.na(res$dataset.prop)] <- "1e+08"
+  res$dataset.prop <- factor(format(res$dataset.prop, scientific = TRUE),
+                            levels = c("1e+04", "1e+05", "1e+06", "1e+07", "1e+08"))
+  res$end_time <- as.POSIXct(res$end_time)
+  res$start_time <- as.POSIXct(res$start_time)
+  res$duration <- difftime(res$end_time, res$start_time, units = "secs")
+  return(
+    res
+  )
+}
+
 computeDistances <- function(dada2_results_data, dataset_list, errFunc_list, dataset_name){
   distances <- list()
   for(item1 in errFunc_list){
@@ -76,6 +101,17 @@ plotDistanceBoxplot.prop <- function(distances.long){
          y="Distance to the default number") + theme_bw()
 }
 
+plotExecutionTimePlot.prop <- function(execution.time.long){
+  execution.time.long |>
+    ggplot()+
+    geom_point(aes(x=dataset.prop, y=duration, colour = process_name), alpha=0.6)+
+    facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free",
+               labeller = labeller(errors.function = label_wrap_gen(width = 100)))+
+    labs(x="Dataset proportion (%)",
+         y="Learn Error Execution Time (s)",
+         colour = "Process Name") + theme_bw()
+}
+
 anscombe_plot <- function(model){
   yhat <- fitted(model)
   res <- resid(model)
@@ -83,9 +119,10 @@ anscombe_plot <- function(model){
 }
 
 #Input data
-path.alldataset <- file.path(list.files("results", full.names = T), "RDS")
+path.alldataset <- file.path(list.files("results_nbases", full.names = T), "RDS")
 paths_learn_errors_data <- list.files(path.alldataset, pattern = "learn_error", full.names = T) 
-paths_dada2_results_data <- list.files(path.alldataset, pattern = "dada_results", full.names = T) 
+paths_dada2_results_data <- list.files(path.alldataset, pattern = "dada_results", full.names = T)
+paths_exec_times <- list.files(path.alldataset, pattern = "execution_time", full.names = T) 
 ref.db <- file.path("refSeq/SILVA-v138.2-16s/silva_nr99_v138.2_toSpecies_trainset.fa.gz")
 
 results.path <- "summary"
@@ -94,6 +131,11 @@ dir.create(results.path, showWarnings = F)
 #Load data
 learn_errors_data <- readMultiRDS(paths_learn_errors_data)
 dada2_results_data <- readMultiRDS(paths_dada2_results_data)
+exec_times_data <- readMultiCSV(paths_exec_times)
+
+#Execution time plot 
+plotExecutionTimePlot.prop(exec_times_data)
+ggsave(file.path(results.path,"nbases_Execution_Time_boxplot.pdf"))
 
 #Sequel_UniBe Distances
 sequel_unibe_dataset <- names(dada2_results_data)[startsWith(names(dada2_results_data),"Sequel_UniBe")]
@@ -156,97 +198,97 @@ ggsave(file.path(results.path,"nbases_Combined_dataset_distance_plot.pdf"))
 
 #Statistics tests
 
-##Revio_UniBe
-results <- list()
-for(err.func in c("loessErrfun.rds", "PacBioErrfun.rds", 
-                  "makeBinnedQualErrfun.rds", "loessErrfun_mod0.rds")){
+# ##Revio_UniBe
+# results <- list()
+# for(err.func in c("loessErrfun.rds", "PacBioErrfun.rds", 
+#                   "makeBinnedQualErrfun.rds", "loessErrfun_mod0.rds")){
   
-  test_by_group <- revio_unibe_distances |>
-    mutate(dataset.prop = factor(format(dataset.prop, scientific = TRUE), levels = c("1e+04", "1e+05", "1e+06", "1e+07"))) |>
-    group_by(dataset.prop) |>
-    summarise(
-      n         = n(),
-      mean      = mean(.data[[err.func]], na.rm = TRUE),
-      shapiro.p = tryCatch(shapiro.test(.data[[err.func]])$p.value,
-                           error = function(e) NA_real_),
-      p.value   = if_else(shapiro.p > 0.05, tryCatch(t.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
-                                                     error = function(e) NA_real_),
-                          tryCatch(wilcox.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
-                                   error = function(e) NA_real_)),
-      .groups = "drop"
-    )|>
-    mutate(err.func = err.func)
+#   test_by_group <- revio_unibe_distances |>
+#     mutate(dataset.prop = factor(format(dataset.prop, scientific = TRUE), levels = c("1e+04", "1e+05", "1e+06", "1e+07"))) |>
+#     group_by(dataset.prop) |>
+#     summarise(
+#       n         = n(),
+#       mean      = mean(.data[[err.func]], na.rm = TRUE),
+#       shapiro.p = tryCatch(shapiro.test(.data[[err.func]])$p.value,
+#                            error = function(e) NA_real_),
+#       p.value   = if_else(shapiro.p > 0.05, tryCatch(t.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
+#                                                      error = function(e) NA_real_),
+#                           tryCatch(wilcox.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
+#                                    error = function(e) NA_real_)),
+#       .groups = "drop"
+#     )|>
+#     mutate(err.func = err.func)
   
-  results[[err.func]] <- test_by_group
-}
+#   results[[err.func]] <- test_by_group
+# }
 
-all_results <- bind_rows(results) |>
-  mutate(p.adj.bonferroni = p.adjust(p.value, method = "bonferroni"),
-         p.adj.benjamin.hochberg = p.adjust(p.value, method = "BH"))
-all_results <- all_results |> drop_na(shapiro.p)
-write.table(all_results, file.path(results.path, "nbases_revio_unibe_summary_test.txt"), row.names = F)
+# all_results <- bind_rows(results) |>
+#   mutate(p.adj.bonferroni = p.adjust(p.value, method = "bonferroni"),
+#          p.adj.benjamin.hochberg = p.adjust(p.value, method = "BH"))
+# all_results <- all_results |> drop_na(shapiro.p)
+# write.table(all_results, file.path(results.path, "nbases_revio_unibe_summary_test.txt"), row.names = F)
 
-all_results |>
-  dplyr::filter(p.adj.bonferroni > 0.01 | p.adj.benjamin.hochberg >0.01) |>
-  print()
+# all_results |>
+#   dplyr::filter(p.adj.bonferroni > 0.01 | p.adj.benjamin.hochberg >0.01) |>
+#   print()
 
-##Sequel_UniBe
-results <- list()
-for(err.func in c("loessErrfun.rds", "PacBioErrfun.rds", 
-                  "loessErrfun_mod0.rds")){
-  test_by_group <- sequel_unibe_distances |>
-    mutate(dataset.prop = factor(format(dataset.prop, scientific = TRUE), levels = c("1e+04", "1e+05", "1e+06", "1e+07"))) |>
-    group_by(dataset.prop) |>
-    summarise(
-      n         = n(),
-      mean      = mean(.data[[err.func]], na.rm = TRUE),
-      shapiro.p = tryCatch(shapiro.test(.data[[err.func]])$p.value,
-                           error = function(e) NA_real_),
-      p.value   = if_else(shapiro.p > 0.05, tryCatch(t.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
-                           error = function(e) NA_real_),
-      tryCatch(wilcox.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
-               error = function(e) NA_real_)),
-      .groups = "drop"
-    )|>
-    mutate(err.func = err.func)
+# ##Sequel_UniBe
+# results <- list()
+# for(err.func in c("loessErrfun.rds", "PacBioErrfun.rds", 
+#                   "loessErrfun_mod0.rds")){
+#   test_by_group <- sequel_unibe_distances |>
+#     mutate(dataset.prop = factor(format(dataset.prop, scientific = TRUE), levels = c("1e+04", "1e+05", "1e+06", "1e+07"))) |>
+#     group_by(dataset.prop) |>
+#     summarise(
+#       n         = n(),
+#       mean      = mean(.data[[err.func]], na.rm = TRUE),
+#       shapiro.p = tryCatch(shapiro.test(.data[[err.func]])$p.value,
+#                            error = function(e) NA_real_),
+#       p.value   = if_else(shapiro.p > 0.05, tryCatch(t.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
+#                            error = function(e) NA_real_),
+#       tryCatch(wilcox.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
+#                error = function(e) NA_real_)),
+#       .groups = "drop"
+#     )|>
+#     mutate(err.func = err.func)
   
-  results[[err.func]] <- test_by_group
-}
+#   results[[err.func]] <- test_by_group
+# }
 
-all_results <- bind_rows(results) |>
-  mutate(p.adj.bonferroni = p.adjust(p.value, method = "bonferroni"),
-         p.adj.benjamin.hochberg = p.adjust(p.value, method = "BH"))
-all_results <- all_results |> drop_na(shapiro.p)
+# all_results <- bind_rows(results) |>
+#   mutate(p.adj.bonferroni = p.adjust(p.value, method = "bonferroni"),
+#          p.adj.benjamin.hochberg = p.adjust(p.value, method = "BH"))
+# all_results <- all_results |> drop_na(shapiro.p)
 
-all_results |>
-  dplyr::filter(p.adj.bonferroni > 0.01 | p.adj.benjamin.hochberg >0.01) |>
-  print()
+# all_results |>
+#   dplyr::filter(p.adj.bonferroni > 0.01 | p.adj.benjamin.hochberg >0.01) |>
+#   print()
 
-write.table(all_results, file.path(results.path, "nbases_sequel_unibe_summary_test.txt"), row.names = F)
+# write.table(all_results, file.path(results.path, "nbases_sequel_unibe_summary_test.txt"), row.names = F)
 
-##Combination and visualization 
-revio  <- read.table(file.path(results.path, "nbases_revio_unibe_summary_test.txt"),  header = TRUE) |> mutate(platform = "Revio UniBe")
-sequel <- read.table(file.path(results.path, "nbases_sequel_unibe_summary_test.txt"), header = TRUE) |> mutate(platform = "Sequel UniBe")
+# ##Combination and visualization 
+# revio  <- read.table(file.path(results.path, "nbases_revio_unibe_summary_test.txt"),  header = TRUE) |> mutate(platform = "Revio UniBe")
+# sequel <- read.table(file.path(results.path, "nbases_sequel_unibe_summary_test.txt"), header = TRUE) |> mutate(platform = "Sequel UniBe")
 
-all_platforms <- bind_rows(revio, sequel) |>
-  mutate(
-    dataset.prop = factor(format(dataset.prop, scientific = TRUE), levels = c("1e+04", "1e+05", "1e+06", "1e+07")),
-    signif = case_when(
-      p.adj.bonferroni < 0.001 ~ "< 0.001",
-      p.adj.bonferroni < 0.01  ~ "< 0.01",
-      p.adj.bonferroni < 0.05  ~ "< 0.05",
-      TRUE ~ "ns"
-    )
-  )
+# all_platforms <- bind_rows(revio, sequel) |>
+#   mutate(
+#     dataset.prop = factor(format(dataset.prop, scientific = TRUE), levels = c("1e+04", "1e+05", "1e+06", "1e+07")),
+#     signif = case_when(
+#       p.adj.bonferroni < 0.001 ~ "< 0.001",
+#       p.adj.bonferroni < 0.01  ~ "< 0.01",
+#       p.adj.bonferroni < 0.05  ~ "< 0.05",
+#       TRUE ~ "ns"
+#     )
+#   )
 
-ggplot(all_platforms, aes(x = dataset.prop, y = mean, group = err.func, colour = err.func)) +
-  geom_line(position = position_dodge(width = 0.3)) +
-  geom_point(aes(shape = signif), size = 3, position = position_dodge(width = 0.3)) +
-  facet_wrap(~platform, scales = "free_y")  +
-  labs(x = "Dataset proportion (%)", y = "Average distance to the full dataset",
-       color = "Error Function", shape="Adjusted p.value") +
-  theme_bw()
-ggsave(file.path(results.path, "nbases_summary_statistics_test.pdf"))
+# ggplot(all_platforms, aes(x = dataset.prop, y = mean, group = err.func, colour = err.func)) +
+#   geom_line(position = position_dodge(width = 0.3)) +
+#   geom_point(aes(shape = signif), size = 3, position = position_dodge(width = 0.3)) +
+#   facet_wrap(~platform, scales = "free_y")  +
+#   labs(x = "Dataset proportion (%)", y = "Average distance to the full dataset",
+#        color = "Error Function", shape="Adjusted p.value") +
+#   theme_bw()
+# ggsave(file.path(results.path, "nbases_summary_statistics_test.pdf"))
 
 #Sequence table
 seq_tables <- list()
