@@ -21,6 +21,47 @@ if(length(args)<2){
   stop("Error: Required arguments are not provided.", call.=FALSE)
 }
 
+# Read a field (in kB) from /proc/self/status, e.g. VmHWM (peak RSS), VmRSS (current)
+read_status_kb <- function(field) {
+  l <- tryCatch(readLines("/proc/self/status"), error = function(e) character())
+  x <- grep(paste0("^", field, ":"), l, value = TRUE)
+  if (length(x) == 0) return(NA_real_)
+  as.numeric(gsub("[^0-9]", "", x))
+}
+
+# Reset the peak-RSS counter so each step gets its own peak
+reset_peak_rss <- function() {
+  try(writeLines("5", "/proc/self/clear_refs"), silent = TRUE)
+}
+
+resource_log <- list()
+
+# Run an expression and record time, CPU and RAM usage
+track_resources <- function(name, expr) {
+  reset_peak_rss()
+  t0 <- Sys.time(); p0 <- proc.time()
+  res <- force(expr)
+  t1 <- Sys.time(); p1 <- proc.time()
+
+  wall    <- as.numeric(difftime(t1, t0, units = "secs"))
+  cpu_sec <- sum((p1 - p0)[c("user.self", "sys.self")])
+
+  n_alloc <- suppressWarnings(as.numeric(Sys.getenv("SLURM_CPUS_PER_TASK", NA)))
+  resource_log[[name]] <<- data.frame(
+    process_name      = name,
+    start_time        = t0,
+    end_time          = t1,
+    wall_sec          = wall,
+    cpu_sec           = cpu_sec,
+    avg_cores_used    = cpu_sec / wall,                         # mean number of busy cores
+    threads_available = RcppParallel::defaultNumThreads(),      # threads dada2 can use
+    cpus_allocated    = n_alloc,                                # NA if not under SLURM
+    peak_ram_gb       = read_status_kb("VmHWM") / 1024^2,
+    end_ram_gb        = read_status_kb("VmRSS") / 1024^2
+  )
+  res
+}
+
 #Setup inputs and outputs 
 path.input <- args[1]
 path.output <- args[2]
@@ -62,50 +103,39 @@ message(paste0("Using the error function : ",func_name))
 if (! is.na(seed)){
   set.seed(seed)
 }
-start_process.learnError <- Sys.time()
 
-err_obj <- tryCatch({
+err_obj <- track_resources("learnError", tryCatch({
+  n_cpus <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = NA))
+  if (is.na(n_cpus)) n_cpus <- TRUE
   if (func_name == "makeBinnedQualErrfun") {
-    learnErrors(
-      path.filts,
-      errorEstimationFunction = func(c(3, 10, 17, 22, 27, 35, 40)),
-      nbases = nbases,
-      multithread = TRUE,
-      randomize=randomize
-    )
+    learnErrors(path.filts,
+                errorEstimationFunction = func(c(3, 10, 17, 22, 27, 35, 40)),
+                nbases = nbases, multithread = n_cpus, randomize = randomize)
   } else {
-    learnErrors(
-      path.filts,
-      errorEstimationFunction = func,
-      nbases = nbases,
-      multithread = TRUE, 
-      randomize=randomize
-    )
+    learnErrors(path.filts, errorEstimationFunction = func,
+                nbases = nbases, multithread = n_cpus, randomize = randomize)
   }
 }, error = function(e) {
   warning(paste0("Failed to learn errors for ", func_name, ": ", e$message))
-  return(NULL)
-})
+  NULL
+}))
 
-if (is.null(err_obj) || is.null(err_obj$err_out)) {
-  message(paste0("Skipping dada() for ", func_name, " due to error estimation failure."))
-  next
-}
+ if (is.null(err_obj) || is.null(err_obj$err_out)) {
+     write.csv(do.call(rbind, resource_log),
+               file.path(path.rds, paste0("execution_time_", func_name, ".csv")),
+               row.names = FALSE)
+     stop(paste0("Error estimation failed for ", func_name))
+   }
 
-end_process.learnError <- Sys.time()
+saveRDS(err_obj, file.path(path.rds, paste0("learn_error_data_", func_name, ".rds")))
 
-saveRDS(err_obj, file.path(path.rds, paste0("learn_error_data_",func_name,".rds")))
+dd_res <- track_resources("Denoising",
+                          dada(path.filts, err = err_obj, multithread = TRUE))
+saveRDS(dd_res, file.path(path.rds, paste0("dada_results_", func_name, ".rds")))
 
-start_process.denoising <- Sys.time()
-dd_res <- dada(path.filts, err=err_obj, multithread=TRUE)
-end_process.denoising <- Sys.time()
-
-saveRDS(dd_res, file.path(path.rds, paste0("dada_results_",func_name,".rds")))
-time_df <- data.frame(start_time=c(start_process.learnError, start_process.denoising), 
-  end_time = c(end_process.learnError, end_process.denoising),
-  process_name=c("learnError", "Denoising")) 
-
-write.csv(time_df, file.path(path.rds, paste0("execution_time_", func_name,".csv")))
+res_df <- do.call(rbind, resource_log)
+write.csv(res_df, file.path(path.rds, paste0("execution_time_", func_name, ".csv")),
+          row.names = FALSE)
 
 message("Done.")
 quit(save = "no", status = 0)

@@ -11,9 +11,9 @@
 #SBATCH --mail-user=moise.meka@students.unibe.ch
 #SBATCH --mail-type=start,end,fail
 #SBATCH --job-name="seqkit_sampling"
-#SBATCH --mem=150GB
+#SBATCH --mem=64GB
 #SBATCH --cpus-per-task=16
-#SBATCH --time=20:00:00
+#SBATCH --time=05:00:00
 #SBATCH --error=/data/users/%u/research_project/.log/errors/%x_%j.err
 #SBATCH --output=/data/users/%u/research_project/.log/output/%x_%j.out
 #SBATCH --array=0-4

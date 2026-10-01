@@ -41,6 +41,8 @@ echo "Working on : ${data_dir}"
 echo "Estimation error function : ${FUNC_NAME}"
 echo "nbases : ${NBASES}"
 echo "SEED : ${SEED}"
+echo "Running on master node: $SLURMD_NODENAME"
+echo "Allocated nodes: $SLURM_JOB_NODELIST"
 
 if [ -z "$NBASES" ]; then 
   apptainer exec --cleanenv --bind "$PWD:/workdir" --pwd /workdir containers/dada2-pipeline.sif \
