@@ -8,7 +8,7 @@ if [ $step -eq 0 ]; then
     sbatch --array=0-$((RAWDATASETCOUNT-1)) exec_quality_control.sh data_normalized/41/raw
 
     #Proportional approach QC step
-    for prop_seed in $(echo "1 2 3 4 5 6 7 8 9 10"); do 
+    for prop_seed in $(echo "1 2 3 4 5 6 7 8 9 10 41"); do 
         DATASETCOUNT=$(ls data_normalized/41/"${prop_seed}" | wc -l)
         sbatch --array=0-$((DATASETCOUNT-1)) exec_quality_control.sh data_normalized/41/"${prop_seed}"
     done 
