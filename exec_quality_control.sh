@@ -7,11 +7,11 @@
 ## Creation date : 08-09-2026
 ##------------------------------------------------------------------------
 
-#SBATCH --partition=pibu_el8
+#SBATCH --partition=pshort_el8
 #SBATCH --mail-user=moise.meka@students.unibe.ch
 #SBATCH --mail-type=start,end,fail
 #SBATCH --job-name="dada2_workflow"
-#SBATCH --mem=150GB
+#SBATCH --mem=64GB
 #SBATCH --cpus-per-task=20
 #SBATCH --time=02:00:00
 #SBATCH --error=/data/users/%u/research_project/.log/errors/%x_%j.err
