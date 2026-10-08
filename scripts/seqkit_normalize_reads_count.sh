@@ -7,13 +7,13 @@
 ## Creation date : 08-09-2026
 ##------------------------------------------------------------------------
 
-#SBATCH --partition=pibu_el8
+#SBATCH --partition=pshort_el8
 #SBATCH --mail-user=moise.meka@students.unibe.ch
 #SBATCH --mail-type=start,end,fail
 #SBATCH --job-name="seqkit_normalize"
-#SBATCH --mem=32GB
+#SBATCH --mem=64GB
 #SBATCH --cpus-per-task=16
-#SBATCH --time=03:00:00
+#SBATCH --time=02:00:00
 #SBATCH --error=/data/users/%u/research_project/.log/errors/%x_%j.err
 #SBATCH --output=/data/users/%u/research_project/.log/output/%x_%j.out
 
@@ -30,9 +30,13 @@ OUTDIR="/data/users/${USER}/research_project/data_normalized/${SEED}"
 mkdir -p "$OUTDIR"
 
 FILES=("${DATA_DIR}"/*/*.fastq*)
-seqkit stats -T -j "$THREADS" "${FILES[@]}" > "${OUTDIR}/stats_before.tsv"
-MIN_COUNT=$(awk 'NR>1 {print $4}' "${OUTDIR}/stats_before.tsv" | sed 's/,//g' | sort -n | head -n 1)
-echo "Files: ${#FILES[@]} | Min reads: ${MIN_COUNT} | Seed: ${SEED}"
+if [ ! -f "${OUTDIR}/stats_before.tsv" ]; then 
+    seqkit stats -T -j "$THREADS" "${FILES[@]}" > "${OUTDIR}/stats_before.tsv"
+    MIN_COUNT=$(awk 'NR>1 {print $4}' "${OUTDIR}/stats_before.tsv" | sed 's/,//g' | sort -n | head -n 1)
+    echo "Files: ${#FILES[@]} | Min reads: ${MIN_COUNT} | Seed: ${SEED}"
+else 
+    MIN_COUNT=7921
+fi
 
 for fastq_file in "${FILES[@]}"; do
     dataset=$(basename "$(dirname "$fastq_file")")
