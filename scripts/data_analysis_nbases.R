@@ -1,3 +1,4 @@
+
 #!/usr/bin/R
 
 #Load libraries
@@ -6,7 +7,43 @@ library(ggplot2, verbose = FALSE, quietly = TRUE); packageVersion("ggplot2")
 library(tidyr, verbose = FALSE, quietly = TRUE); packageVersion("tidyr") 
 library(dplyr, verbose = FALSE, quietly = TRUE); packageVersion("dplyr") 
 
+#Constants
+## Number of bases used for learning errors. "1e+08" = default (full dataset), 
+## i.e. runs whose directory name has no "_1e+0X" suffix.
+prop.levels <- c("1e+04", "1e+05", "1e+06", "1e+07", "1e+08")
+## Resource metrics written by track_resources() in dada2_analysis.R
+resource.cols <- c("wall_sec", "cpu_sec", "avg_cores_used", "threads_available",
+                   "cpus_allocated", "peak_ram_gb", "end_ram_gb")
+
 #Define functions
+
+## Parse <dataset>[_<nbases>][_<seed>]/RDS/<prefix>_<errors.function>.<ext>
+## Dataset names now contain underscores (e.g. LIB_16S_KINNEX_SEGMENTED_REVIO_SPRQ_NX), 
+## so we cannot split on "_" anymore: the nbases (and optional seed) suffix is matched 
+## from the end of the run directory name.
+parseRunPath <- function(file_path){
+  run  <- basename(dirname(dirname(file_path)))
+  file <- basename(file_path)
+  pat  <- "^(.+?)_(1e\\+0[0-9])(?:_([0-9]+))?$"
+  has.suffix <- grepl(pat, run, perl = TRUE)
+  
+  used.seed <- ifelse(has.suffix, sub(pat, "\\3", run, perl = TRUE), NA_character_)
+  used.seed[!is.na(used.seed) & used.seed == ""] <- NA_character_
+  
+  errors.function <- sub("^(dada_results|learn_error_data|execution_time)_", "", file)
+  errors.function <- sub("\\.(rds|csv)$", "", errors.function)
+  
+  data.frame(
+    ref_name        = paste0(run, "_", file),
+    run             = run,
+    dataset         = ifelse(has.suffix, sub(pat, "\\1", run, perl = TRUE), run),
+    dataset.prop    = ifelse(has.suffix, sub(pat, "\\2", run, perl = TRUE), "1e+08"),
+    used.seed       = used.seed,
+    errors.function = errors.function,
+    stringsAsFactors = FALSE
+  )
+}
+
 readMultiRDS <- function(list_of_paths){
   res <- list()
   for(file_path in list_of_paths){
@@ -16,56 +53,80 @@ readMultiRDS <- function(list_of_paths){
   return(res)
 }
 
-readMultiCSV <- function(list_of_paths){
+## completed: ref_names of the dada_results RDS that exist. A run without a 
+## dada_results file (e.g. loessErrfun_mod1-4, makeBinnedQualErrfun on Sequel) 
+## only logged the failed learnError step, so it is flagged as "failed".
+readMultiCSV <- function(list_of_paths, completed = character()){
   res <- list()
   for(file_path in list_of_paths){
-    ref_name <- paste0(basename(dirname(dirname(file_path))), "_", basename(file_path))
-    res[[ref_name]] <- read.csv(file_path)
-    res[[ref_name]]$X <- NULL
-    tmp <- sapply(strsplit(ref_name , "_execution_time_"), function(x) x[1])
-    res[[ref_name]]$platform <- sapply(strsplit(tmp , "_"), function(x) paste(x[1], x[2], sep = " "))
-    res[[ref_name]]$dataset.prop <- sapply(strsplit(tmp , "_"), function(x) x[3])
-    res[[ref_name]]$used.seed <- sapply(strsplit(tmp , "_"), function(x) x[4])
-    res[[ref_name]]$errors.function <- sub(".csv","",sapply(strsplit(ref_name , "_execution_time_"), function(x) x[2]))
-    
+    info <- parseRunPath(file_path)
+    df <- read.csv(file_path)
+    if(all(df$process_name == "learnError")) next
+    df$X <- NULL
+    df$platform        <- info$dataset
+    df$dataset.prop    <- info$dataset.prop
+    df$used.seed       <- info$used.seed
+    df$errors.function <- info$errors.function
+    df$status <- ifelse(paste0(info$run, "_dada_results_", info$errors.function, ".rds") %in% completed,
+                        "completed", "failed")
+    res[[info$ref_name]] <- df
   }
   res <- bind_rows(res)
-  res$dataset.prop[is.na(res$dataset.prop)] <- "1e+08"
-  res$dataset.prop <- factor(format(res$dataset.prop, scientific = TRUE),
-                            levels = c("1e+04", "1e+05", "1e+06", "1e+07", "1e+08"))
+  
+  #Older runs only have process_name/start_time/end_time
+  for(col in setdiff(resource.cols, names(res))) res[[col]] <- NA_real_
+  res[resource.cols] <- lapply(res[resource.cols], as.numeric)
+  
+  res$dataset.prop <- factor(res$dataset.prop, levels = prop.levels)
   res$end_time <- as.POSIXct(res$end_time)
   res$start_time <- as.POSIXct(res$start_time)
-  res$duration <- difftime(res$end_time, res$start_time, units = "secs")
+  #Wall time (s): use the logged value, fall back to end - start
+  res$duration <- ifelse(!is.na(res$wall_sec), res$wall_sec,
+                         as.numeric(difftime(res$end_time, res$start_time, units = "secs")))
+  #Cores really allocated (SLURM) if known, otherwise the threads visible to RcppParallel
+  res$cores_ref      <- coalesce(res$cpus_allocated, res$threads_available)
+  res$cpu_efficiency <- res$avg_cores_used / res$cores_ref
+  res$status <- factor(res$status, levels = c("completed", "failed"))
   return(
     res
   )
 }
 
-computeDistances <- function(dada2_results_data, dataset_list, errFunc_list, dataset_name){
+## Distance between the error matrix learned on the full dataset and the one 
+## learned on a subset of bases, for every error function available in the dataset.
+## Returns a wide data.frame (one column "<errors.function>.rds" per function).
+computeDistances <- function(dada2_results_data, dada2_meta, dataset_name){
+  meta <- dada2_meta[dada2_meta$dataset == dataset_name, ]
   distances <- list()
-  for(item1 in errFunc_list){
-    tmp <- c()
-    ref_names <- c()
-    full <- getErrors(dada2_results_data[[paste0(dataset_name,"_dada_results_",item1)]])
-    for(item2 in dataset_list){
-      if(endsWith(item2, item1)){
-        ref_names <- c(ref_names, 
-                       sapply(strsplit(item2 , "_dada_results_"), function(x) x[1]))
-        tmp <- c(tmp, 
-                 wavethresh::l2norm(full, getErrors(dada2_results_data[[item2]])))
-      }
+  for(err.func in unique(meta$errors.function)){
+    sub.meta <- meta[meta$errors.function == err.func, ]
+    full.ref <- sub.meta$ref_name[sub.meta$dataset.prop == "1e+08"]
+    if(length(full.ref) != 1){
+      message("[", dataset_name, "] no full-dataset result for ", err.func, ": skipped")
+      next
     }
-    tmp <- as.matrix(tmp)
-    rownames(tmp) <- ref_names
-    distances[[item1]] <- tmp
+    full <- getErrors(dada2_results_data[[full.ref]])
+    for(i in seq_len(nrow(sub.meta))){
+      other <- getErrors(dada2_results_data[[sub.meta$ref_name[i]]])
+      if(!identical(dim(full), dim(other))){
+        message("[", dataset_name, "] dimension mismatch for ", sub.meta$ref_name[i], ": skipped")
+        next
+      }
+      distances[[length(distances) + 1]] <- data.frame(
+        dataset.prop    = sub.meta$dataset.prop[i],
+        used.seed       = sub.meta$used.seed[i],
+        errors.function = paste0(err.func, ".rds"),
+        distances       = sqrt(sum((full - other)^2)),   # L2 norm
+        stringsAsFactors = FALSE
+      )
+    }
   }
-  distances <- as.data.frame(distances)
-  dataset.prop <- sapply(strsplit(rownames(distances),"_"), function(x) x[3])
-  dataset.prop[is.na(dataset.prop)] <- "1e+08"
-  distances$dataset.prop <- as.numeric(dataset.prop)
-  
-  used.seed <- sapply(strsplit(rownames(distances),"_"), function(x) x[4])
-  distances$used.seed <- as.numeric(used.seed)
+  if(length(distances) == 0) return(NULL)
+  distances <- bind_rows(distances) |>
+    pivot_wider(names_from = errors.function, values_from = distances) |>
+    as.data.frame()
+  distances$dataset.prop <- as.numeric(distances$dataset.prop)
+  distances$used.seed <- as.numeric(distances$used.seed)
   return(distances)
 }
 
@@ -73,11 +134,12 @@ transToLong.prop <- function(distances){
   distances.long <- distances |>
     pivot_longer(cols = ends_with(".rds"),
                  values_to = "distances",
-                 names_to = "errors.function") |>
+                 names_to = "errors.function",
+                 values_drop_na = TRUE) |>
     mutate(
-      errors.function = sub(".rds","",errors.function),
+      errors.function = sub(".rds","",errors.function, fixed = TRUE),
       dataset.prop = factor(format(dataset.prop, scientific = TRUE), 
-                            levels = c("1e+04", "1e+05", "1e+06", "1e+07", "1e+08"))
+                            levels = prop.levels)
     )
   return(distances.long)
 }
@@ -101,21 +163,34 @@ plotDistanceBoxplot.prop <- function(distances.long){
          y="Distance to the default number") + theme_bw()
 }
 
-plotExecutionTimePlot.prop <- function(execution.time.long){
+## Generic resource plot: one point per run/step, metric on y
+plotResourcePlot.prop <- function(execution.time.long, metric, ylab){
+  dodge <- position_dodge(width = 0.3)
+  n.platform <- n_distinct(execution.time.long$platform)
   execution.time.long |>
-    ggplot()+
-    geom_point(aes(x=dataset.prop, y=duration, colour = process_name), alpha=0.6)+
-    facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free",
+    ggplot(aes(x=dataset.prop, y=.data[[metric]], colour = process_name,
+               group = interaction(platform, process_name)))+
+    geom_line(position = dodge, alpha=0.4)+
+    geom_point(aes(shape=platform), position = dodge, alpha=0.6)+
+    scale_shape_manual(values = rep_len(c(16, 17, 15, 3, 7, 8, 4, 0, 1, 2, 5, 6, 9, 10, 11, 12, 13, 14), n.platform))+
+    facet_grid(cols=vars(errors.function), scales = "free",
                labeller = labeller(errors.function = label_wrap_gen(width = 100)))+
-    labs(x="Dataset proportion (%)",
-         y="Learn Error Execution Time (s)",
-         colour = "Process Name") + theme_bw()
+    labs(x="Number of bases for learning errors",
+         y=ylab,
+         colour = "Process Name",
+         shape = "Dataset") + theme_bw()
 }
 
-anscombe_plot <- function(model){
-  yhat <- fitted(model)
-  res <- resid(model)
-  plot(yhat, res, xlab = "Fitted values", ylab = "Residuals", main = "Tukey-Anscombe plot")
+plotExecutionTimePlot.prop <- function(execution.time.long){
+  plotResourcePlot.prop(execution.time.long, "duration", "Execution Time (s)")
+}
+
+## Size the figure from the number of facets (many datasets now)
+saveFacetPlot <- function(plot, filename, data, by.platform = TRUE, ...){
+  n.col <- n_distinct(data$errors.function)
+  n.row <- if(by.platform) n_distinct(data$platform) else 3
+  ggsave(file.path(results.path, filename), plot = plot,
+         width = 2.5 * n.col + 2, height = 2 * n.row + 1, limitsize = FALSE, ...)
 }
 
 #Input data
@@ -131,70 +206,117 @@ dir.create(results.path, showWarnings = F)
 #Load data
 learn_errors_data <- readMultiRDS(paths_learn_errors_data)
 dada2_results_data <- readMultiRDS(paths_dada2_results_data)
-exec_times_data <- readMultiCSV(paths_exec_times)
+exec_times_data <- readMultiCSV(paths_exec_times, completed = names(dada2_results_data))
 
-#Execution time plot 
-plotExecutionTimePlot.prop(exec_times_data)
-ggsave(file.path(results.path,"nbases_Execution_Time_boxplot.pdf"))
+#Run metadata (dataset / nbases / seed / error function), indexed by ref_name
+dada2_meta <- bind_rows(lapply(paths_dada2_results_data, parseRunPath)) |> as.data.frame()
+rownames(dada2_meta) <- dada2_meta$ref_name
+datasets <- unique(dada2_meta$dataset)
+message(length(datasets), " datasets found:\n  ", paste(datasets, collapse = "\n  "))
 
-#Sequel_UniBe Distances
-sequel_unibe_dataset <- names(dada2_results_data)[startsWith(names(dada2_results_data),"Sequel_UniBe")]
-sequel_unibe_distances <- computeDistances(dada2_results_data, 
-                                     sequel_unibe_dataset, 
-                                     c("loessErrfun_mod0.rds", 
-                                        "PacBioErrfun.rds", 
-                                       "loessErrfun.rds"),
-                                     "Sequel_UniBe")
+#Failed runs (no dada_results file: only the failed learnError step was logged)
+failed_runs <- exec_times_data |>
+  filter(status == "failed") |>
+  distinct(platform, dataset.prop, used.seed, errors.function)
+write.csv(failed_runs, file.path(results.path, "nbases_failed_runs.csv"), row.names = F)
+failed_runs |> count(errors.function, name = "n_failed_runs") |> print()
 
-sequel_unibe_distances.long <- transToLong.prop(sequel_unibe_distances)
-plotDistancePoint.prop(sequel_unibe_distances.long)
-ggsave(file.path(results.path,"nbases_Sequel_UniBe_dataset_distance_plot.pdf"))
-plotDistanceBoxplot.prop(sequel_unibe_distances.long)
-ggsave(file.path(results.path,"nbases_Sequel_UniBe_dataset_distance_boxplot.pdf"))
+#Execution time and resource usage (completed runs only)
+exec_times_ok <- exec_times_data |> filter(status == "completed")
 
-#Revio_UniBe Distances 
-revio_unibe_dataset <- names(dada2_results_data)[startsWith(names(dada2_results_data),"Revio_UniBe")]
-revio_unibe_distances <- computeDistances(dada2_results_data, 
-                                     revio_unibe_dataset, 
-                                     c("loessErrfun.rds", 
-                                       "PacBioErrfun.rds", 
-                                       "makeBinnedQualErrfun.rds",
-                                       "loessErrfun_mod0.rds"),
-                                     "Revio_UniBe")
+## Execution time
+p <- plotExecutionTimePlot.prop(exec_times_ok)
+saveFacetPlot(p, "nbases_Execution_Time_boxplot.pdf", exec_times_ok)
 
-revio_unibe_distances.long <- transToLong.prop(revio_unibe_distances)
-plotDistancePoint.prop(revio_unibe_distances.long)
-ggsave(file.path(results.path,"nbases_Revio_UniBe_dataset_distance_plot.pdf"))
-plotDistanceBoxplot.prop(revio_unibe_distances.long)
-ggsave(file.path(results.path,"nbases_Revio_UniBe_dataset_distance_boxplot.pdf"))
+## Total CPU time
+p <- plotResourcePlot.prop(exec_times_ok, "cpu_sec", "CPU Time (s)")
+saveFacetPlot(p, "nbases_CPU_Time_plot.pdf", exec_times_ok)
 
+## Average number of busy cores (cpu_sec / wall_sec)
+p <- plotResourcePlot.prop(exec_times_ok, "avg_cores_used", "Average cores used")
+saveFacetPlot(p, "nbases_Cores_Used_plot.pdf", exec_times_ok)
 
-#Combination of platforms
-combined_distances.long <- rbind(
-  revio_unibe_distances.long |> mutate(platform="Revio UniBe"),
-  sequel_unibe_distances.long |> mutate(platform="Sequel UniBe")
-)
+## CPU efficiency: average busy cores / cores allocated
+p <- plotResourcePlot.prop(exec_times_ok, "cpu_efficiency", "CPU efficiency (avg cores used / cores available)")
+saveFacetPlot(p, "nbases_CPU_Efficiency_plot.pdf", exec_times_ok)
 
-combined_distances.long |>
+## Peak RAM
+## NB: peak is per step only if /proc/self/clear_refs was writable; otherwise 
+## VmHWM is cumulative and Denoising peak >= learnError peak.
+p <- plotResourcePlot.prop(exec_times_ok, "peak_ram_gb", "Peak RAM (GB)")
+saveFacetPlot(p, "nbases_Peak_RAM_plot.pdf", exec_times_ok)
+
+## Summary table (mean over replicates/seeds)
+resource_summary <- exec_times_ok |>
+  group_by(platform, errors.function, dataset.prop, process_name) |>
+  summarise(
+    n_runs = n(),
+    across(c(duration, cpu_sec, avg_cores_used, cpu_efficiency, peak_ram_gb, end_ram_gb),
+           ~ mean(.x, na.rm = TRUE), .names = "mean_{.col}"),
+    .groups = "drop"
+  )
+write.csv(resource_summary, file.path(results.path, "nbases_resource_summary.csv"), row.names = F)
+
+#Distances to the full dataset, for every dataset
+distances_by_dataset <- list()
+distances_long_by_dataset <- list()
+for(ds in datasets){
+  ds.distances <- computeDistances(dada2_results_data, dada2_meta, ds)
+  if(is.null(ds.distances)) next
+  ds.distances.long <- transToLong.prop(ds.distances)
+  distances_by_dataset[[ds]] <- ds.distances
+  distances_long_by_dataset[[ds]] <- ds.distances.long |> mutate(platform = ds)
+  
+  p <- plotDistancePoint.prop(ds.distances.long)
+  ggsave(file.path(results.path, paste0("nbases_", ds, "_dataset_distance_plot.pdf")), plot = p)
+  p <- plotDistanceBoxplot.prop(ds.distances.long)
+  ggsave(file.path(results.path, paste0("nbases_", ds, "_dataset_distance_boxplot.pdf")), plot = p)
+}
+
+#Combination of datasets
+combined_distances.long <- bind_rows(distances_long_by_dataset)
+write.csv(combined_distances.long, file.path(results.path, "nbases_all_distances.csv"), row.names = F)
+
+p <- combined_distances.long |>
   ggplot()+
-  geom_boxplot(aes(x=dataset.prop, y=distances), outliers = F)+
+  #geom_boxplot(aes(x=dataset.prop, y=distances), outliers = F)+
   geom_jitter(aes(x=dataset.prop, y=distances, colour = dataset.prop), alpha=0.6)+
   facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free",
+             labeller = labeller(errors.function = label_wrap_gen(width = 100),
+                                 platform = label_wrap_gen(width = 20)))+
+  labs(x="Number of bases for learning errors",
+       y="Distance to the full dataset") + 
+  labs(colour="Number of\nbases") + theme_bw()
+saveFacetPlot(p, "nbases_Combined_dataset_distance_boxplot.png", combined_distances.long)
+
+dodge <- position_dodge(width = 0.3)
+p <- combined_distances.long |>
+  ggplot(aes(x=dataset.prop, y=distances, colour = platform, shape = platform, group = platform))+
+  geom_line(position = dodge, alpha=0.4)+
+  geom_point(position = dodge, alpha=0.6)+
+  scale_shape_manual(values = rep_len(c(16, 17, 15, 3, 7, 8, 4, 0, 1, 2, 5, 6, 9, 10, 11, 12, 13, 14),
+                                      n_distinct(combined_distances.long$platform)))+
+  facet_grid(cols=vars(errors.function), scales = "free",
              labeller = labeller(errors.function = label_wrap_gen(width = 100)))+
-  labs(x="Dataset proportion (%)",
-       y="Distance to the full dataset") + 
-  labs(colour="Dataset\nproportion (%)") + theme_bw()
-ggsave(file.path(results.path,"nbases_Combined_dataset_distance_boxplot.png"))
+  labs(x="Number of bases for learning errors",
+       y="Distance to the full dataset",
+       colour="Dataset", shape="Dataset")+theme_bw()
+saveFacetPlot(p, "nbases_Combined_dataset_distance_plot.pdf", combined_distances.long)
 
-combined_distances.long |>
-  ggplot()+
-  geom_jitter(aes(x=dataset.prop, y=distances, colour = dataset.prop), alpha=0.6)+
-  facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free")+
-  labs(x="Dataset proportion (%)",
-       y="Distance to the full dataset") + 
-  labs(colour="Dataset\nproportion (%)")+theme_bw()
-ggsave(file.path(results.path,"nbases_Combined_dataset_distance_plot.pdf"))
 
+p <- combined_distances.long |>
+  dplyr::filter(platform!="Sequel_UniBe") |> 
+  ggplot(aes(x=dataset.prop, y=distances, colour = platform, shape = platform, group = platform))+
+  geom_line(position = dodge, alpha=0.4)+
+  geom_point(position = dodge, alpha=0.6)+
+  scale_shape_manual(values = rep_len(c(16, 17, 15, 3, 7, 8, 4, 0, 1, 2, 5, 6, 9, 10, 11, 12, 13, 14),
+                                      n_distinct(combined_distances.long$platform)))+
+  facet_grid(cols=vars(errors.function), scales = "free",
+             labeller = labeller(errors.function = label_wrap_gen(width = 100)))+
+  labs(x="Number of bases for learning errors",
+       y="Distance to the full dataset",
+       colour="Dataset", shape="Dataset")+theme_bw()
+saveFacetPlot(p, "nbases_Combined_dataset_distance_plot_without_Sequel_UniBe.pdf", combined_distances.long)
 
 #Statistics tests
 
@@ -292,50 +414,30 @@ ggsave(file.path(results.path,"nbases_Combined_dataset_distance_plot.pdf"))
 
 #Sequence table
 seq_tables <- list()
+meta.list <- list()
 N <- length(names(dada2_results_data))
-sample.out <- c()
-dataset.prop <- c()
-subset.replicate <- c()
-fastq.files <- c()
-error.func <- c()
-platform <- c()
 n=1
 for (ref_name in names(dada2_results_data)){
   cat("[",n,"/",N,"] : ", ref_name,"\n")
-  seq_tables[[ref_name]] <- makeSequenceTable(dada2_results_data[[ref_name]])
-  fastq.files <- c(fastq.files, rownames(seq_tables[[ref_name]]))
-  rownames(seq_tables[[ref_name]]) <- paste0(sub(".rds","",ref_name), "_", rownames(seq_tables[[ref_name]]))
-  sample.out <- c(sample.out, rownames(seq_tables[[ref_name]]))
-  dataset.prop <- c(dataset.prop,
-                    rep(sapply(strsplit(ref_name, "_"), function(x) x[3]),
-                          length(rownames(seq_tables[[ref_name]]))))
-  subset.replicate <- c(subset.replicate,
-                        rep(sapply(strsplit(ref_name, "_"), function(x) x[4]),
-                              length(rownames(seq_tables[[ref_name]])))
-                        )
-  error.func <- c(error.func,
-                rep(sub(".rds","",
-                            sapply(strsplit(ref_name, "_dada_results_"), 
-                                  function(x) x[2])),
-                        length(rownames(seq_tables[[ref_name]])))
-                        )
-  platform <- c(platform,
-                rep(sapply(strsplit(ref_name, "_"), function(x) paste0(x[1],"_",x[2])),
-                    length(rownames(seq_tables[[ref_name]]))))
+  seq.tab <- makeSequenceTable(dada2_results_data[[ref_name]])
+  info <- dada2_meta[ref_name, ]
+  sample.names <- paste0(sub(".rds","",ref_name, fixed = TRUE), "_", rownames(seq.tab))
+  meta.list[[ref_name]] <- data.frame(
+    fastq.files      = rownames(seq.tab),
+    platform         = info$dataset,
+    dataset.prop     = info$dataset.prop,
+    subset.replicate = info$used.seed,
+    error.func       = info$errors.function,
+    sample.out       = sample.names
+  )
+  rownames(seq.tab) <- sample.names
+  seq_tables[[ref_name]] <- seq.tab
   n<-n+1
 }
-all.meta.data <- data.frame(
-  fastq.files,
-  platform,
-  dataset.prop,
-  subset.replicate,
-  error.func
-)
-rownames(all.meta.data) <- sample.out
-all.meta.data <- all.meta.data |>
-  mutate(
-    dataset.prop = factor(format(dataset.prop, scientific = TRUE), levels = c("1e+04", "1e+05", "1e+06", "1e+07"))
-  )
+all.meta.data <- bind_rows(meta.list) |> as.data.frame()
+rownames(all.meta.data) <- all.meta.data$sample.out
+all.meta.data$sample.out <- NULL
+all.meta.data$dataset.prop <- factor(all.meta.data$dataset.prop, levels = prop.levels)
 write.csv(all.meta.data,file.path(results.path, "nbases_all_metadata.csv"))
 combined.seq_tables <- mergeSequenceTables(tables=seq_tables)
 saveRDS(combined.seq_tables,file.path(results.path, "nbases_all_dataset_sequence_table.rds"))
