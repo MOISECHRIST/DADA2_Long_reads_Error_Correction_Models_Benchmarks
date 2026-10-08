@@ -9,5 +9,7 @@ Rplots.pdf
 refSeq
 .RDataTmp
 summary/*/*.rds
+summary/*.rds
 summary/*/*.csv
+summary/*.csv
 results*
