@@ -30,13 +30,9 @@ OUTDIR="/data/users/${USER}/research_project/data_normalized/${SEED}"
 mkdir -p "$OUTDIR"
 
 FILES=("${DATA_DIR}"/*/*.fastq*)
-if [ ! -f "${OUTDIR}/stats_before.tsv" ]; then 
-    seqkit stats -T -j "$THREADS" "${FILES[@]}" > "${OUTDIR}/stats_before.tsv"
-    MIN_COUNT=$(awk 'NR>1 {print $4}' "${OUTDIR}/stats_before.tsv" | sed 's/,//g' | sort -n | head -n 1)
-    echo "Files: ${#FILES[@]} | Min reads: ${MIN_COUNT} | Seed: ${SEED}"
-else 
-    MIN_COUNT=7921
-fi
+seqkit stats -T -j "$THREADS" "${FILES[@]}" > "${OUTDIR}/stats_before.tsv"
+MIN_COUNT=$(awk 'NR>1 {print $4}' "${OUTDIR}/stats_before.tsv" | sed 's/,//g' | sort -n | head -n 1)
+echo "Files: ${#FILES[@]} | Min reads: ${MIN_COUNT} | Seed: ${SEED}"
 
 for fastq_file in "${FILES[@]}"; do
     dataset=$(basename "$(dirname "$fastq_file")")

@@ -1,5 +1,12 @@
 #!/bin/bash
-func_list=(loessErrfun PacBioErrfun makeBinnedQualErrfun loessErrfun_mod0  loessErrfun_mod1 loessErrfun_mod2 loessErrfun_mod3 loessErrfun_mod4)
+func_list=(loessErrfun
+PacBioErrfun
+makeBinnedQualErrfun
+loessErrfun_mod0 
+loessErrfun_mod1
+loessErrfun_mod2
+loessErrfun_mod3
+loessErrfun_mod4)
 RAWDATASETCOUNT=$(ls data_normalized/41/raw | wc -l)
 step=${1:-0}
 
