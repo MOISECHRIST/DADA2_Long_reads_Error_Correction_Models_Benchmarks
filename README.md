@@ -1,33 +1,36 @@
-All the important plots are in the summary folder
+## Project structure
 
-## Using the non normalized files
+```         
+├── Dockerfile
+├── exec_quality_control.sh
+├── exec_sampling.sh
+├── exec_sbatch_normalized.sh
+├── exec_sbatch.sh
+├── main.sh
+├── research_project.Rproj
+├── README.md
+├── refSeq/
+├── results/ -> Job results on IBU cluster 
+├── results_nbases/ -> Results from nbases approach
+├── results_prop/ -> Results from proportion approach
+├── scripts/
+|   ├── dada2_analysis.R
+|   ├── data_analysis_nbases.R
+|   ├── data_analysis_prop.R
+|   ├── functions.R
+|   ├── gather_logs.py
+|   ├── phyloseq_visualization.R
+|   ├── quality_control_trimming.r
+|   ├── run_r_analysis.slurm
+|   ├── seqkit_normalize_reads_count.sh
+|   └── seqkit_sampling.slurm
+└── summary/
+    ├── Dataset_Summary-Before_Normalization.csv
+    ├── nbases/
+    ├── proportion/
+    ├── results_summary_learning.csv
+    ├── taxonomic_distrib_top_100_all_datasets_plot.pdf
+    └── taxonomic_distrib_top_100_nbases_all_datasets_plot.pdf
+```
 
-### Fastq proportional sampling approach
 
-#### Execution time
-
-![plot0](summary/raw_data_25-09-2026/Execution_Time_boxplot.png)
-
-#### Distance to the full dataset comparison
-
-![plot1](summary/raw_data_25-09-2026/Combined_dataset_distance_boxplot.png) ![plot2](summary/summary_statistics_test.png)
-
-#### Taxonomy Comparison
-
-- Revio UniBe dataset
-
-![plot3](summary/raw_data_25-09-2026/taxonomic_distrib_top_100_revio_unibe_plot.png)
-
-- Sequel UniBe dataset
-
-![plot4](summary/raw_data_25-09-2026/taxonomic_distrib_top_100_sequel_unibe_plot.png)
-
-### nbases sampling approach
-
-#### Distance to the full dataset comparison
-
-#### Taxonomy Comparison
-
-- Revio UniBe dataset
-
-- Sequel UniBe dataset

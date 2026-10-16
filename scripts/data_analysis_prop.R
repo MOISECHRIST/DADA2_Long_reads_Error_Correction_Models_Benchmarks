@@ -5,6 +5,7 @@ library(dada2, verbose = FALSE, quietly = TRUE); packageVersion("dada2")
 library(ggplot2, verbose = FALSE, quietly = TRUE); packageVersion("ggplot2")
 library(tidyr, verbose = FALSE, quietly = TRUE); packageVersion("tidyr") 
 library(dplyr, verbose = FALSE, quietly = TRUE); packageVersion("dplyr") 
+library(wavethresh, verbose = FALSE, quietly = TRUE); packageVersion("wavethresh")
 
 #Constants
 ## Proportion (%) of the dataset used for learning errors. "100" = full dataset, 
@@ -56,12 +57,11 @@ readMultiCSV <- function(list_of_paths){
     info <- parseRunPath(file_path)
     df <- read.csv(file_path)
     df$X <- NULL
-    #Drop files where learnError is the only process logged (failed runs)
     if(all(df$process_name == "learnError")) next
-    df$platform        <- info$dataset
-    df$dataset.prop    <- info$dataset.prop
-    df$used.seed       <- info$used.seed
-    df$errors.function <- info$errors.function
+    df$platform          <- info$dataset
+    df$dataset.prop      <- info$dataset.prop
+    df$used.seed         <- info$used.seed
+    df$errors.function   <- info$errors.function
     res[[info$ref_name]] <- df
   }
   res <- bind_rows(res)
@@ -121,7 +121,7 @@ computeDistances <- function(dada2_results_data, dada2_meta, dataset_name){
         dataset.prop    = sub.meta$dataset.prop[i],
         used.seed       = sub.meta$used.seed[i],
         errors.function = paste0(err.func, ".rds"),
-        distances       = sqrt(sum((full - other)^2)),   # L2 norm
+        distances       = l2norm(full, other),
         stringsAsFactors = FALSE
       )
     }
@@ -172,13 +172,13 @@ plotDistanceBoxplot.prop <- function(distances.long){
 plotResourcePlot.prop <- function(execution.time.long, metric, ylab){
   execution.time.long |>
     ggplot()+
-    geom_boxplot(aes(x=dataset.prop, y=.data[[metric]], colour = process_name), alpha=0.6)+
-    facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free",
+    geom_boxplot(aes(x=dataset.prop, y=.data[[metric]], colour = label), alpha=0.6)+
+    facet_grid(cols=vars(errors.function), rows = vars(process_name), scales = "free",
                labeller = labeller(errors.function = label_wrap_gen(width = 100),
                                    platform = label_wrap_gen(width = 20)))+
     labs(x="Dataset proportion (%)",
          y=ylab,
-         colour = "Process Name") + theme_bw()
+         colour = "Dataset") + theme_bw()
 }
 
 plotExecutionTimePlot.prop <- function(execution.time.long){
@@ -234,6 +234,29 @@ paths_dada2_results_data <- list.files(path.alldataset, pattern = "dada_results"
 paths_exec_times <- list.files(path.alldataset, pattern = "execution_time", full.names = T)
 ref.db <- file.path("refSeq/SILVA-v138.2-16s/silva_nr99_v138.2_toSpecies_trainset.fa.gz")
 
+datasets_details <- read.csv("summary/Dataset_Summary-Before_Normalization.csv")
+datasets_details <- datasets_details |>
+  rowwise() |>
+  mutate(
+    label = {
+      optional <- c(Library.Type, Segmentation, Chemistry)
+      optional <- optional[!is.na(optional) & optional != ""]
+      paste0(Location, " (", paste(c(Sequencer, optional), collapse = "/"), ")")
+    }
+  ) |>
+  ungroup()
+
+dataset.labels <- setNames(datasets_details$label, datasets_details$Dataset.Name)
+
+getLabel <- function(x){
+  out <- unname(dataset.labels[x])
+  ifelse(is.na(out), x, out)   # fall back to the raw name if no match
+}
+
+learn_error_logs <- read.csv("summary/results_summary_learning.csv")
+learn_error_logs <- learn_error_logs[is.na(learn_error_logs$nbases),]
+learn_error_logs$nbases <- NULL
+
 results.path <- "summary"
 dir.create(results.path, showWarnings = F)
 
@@ -249,6 +272,7 @@ datasets <- unique(dada2_meta$dataset)
 message(length(datasets), " datasets found:\n  ", paste(datasets, collapse = "\n  "))
 
 #Execution time and resource usage
+exec_times_data$label <- getLabel(exec_times_data$platform)
 ## Execution time
 p <- plotExecutionTimePlot.prop(exec_times_data)
 saveFacetPlot(p, "Execution_Time_boxplot.pdf", exec_times_data, by.platform = FALSE)
@@ -277,10 +301,52 @@ resource_summary <- exec_times_data |>
   summarise(
     n_runs = n(),
     across(c(duration, cpu_sec, avg_cores_used, cpu_efficiency, peak_ram_gb, end_ram_gb),
-           list(mean = ~ mean(.x, na.rm = TRUE), sd = ~ sd(.x, na.rm = TRUE))),
+           list(mean = ~ mean(.x, na.rm = TRUE), sd = ~ sd(.x, na.rm = TRUE), median = ~ median(.x, na.rm = TRUE))),
     .groups = "drop"
   )
 write.csv(resource_summary, file.path(results.path, "resource_summary.csv"), row.names = F)
+
+#Plot learning Error log data 
+pat <- "^(.+?)_(1|5|10|25|50)_([0-9]+)$"
+
+learn_error_logs <- learn_error_logs |>
+  mutate(
+    has.suffix   = grepl(pat, Dataset, perl = TRUE),
+    platform     = ifelse(has.suffix, sub(pat, "\\1", Dataset, perl = TRUE), Dataset),
+    dataset.prop = factor(ifelse(has.suffix, sub(pat, "\\2", Dataset, perl = TRUE), full.prop),
+                          levels = prop.levels),
+    used.seed    = ifelse(has.suffix, sub(pat, "\\3", Dataset, perl = TRUE), NA_character_),
+    label        = getLabel(platform)
+  )
+
+ggplot(learn_error_logs,
+       aes(x = dataset.prop, y = Total.bases.used, colour = label)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.5) +
+  geom_jitter(width = 0.15, alpha = 0.3, size = 0.8) +
+  facet_wrap(~Loss.Function, ncol = 4) +
+  labs(x = "Dataset proportion (%)", y = "Total bases used", colour = "Dataset") +
+  theme_bw()
+ggsave(file.path(results.path, "Total_bases_used_during_learingError.pdf"))
+
+ggplot(learn_error_logs,
+       aes(x = dataset.prop, y = Total.reads.used, colour = label)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.5) +
+  geom_jitter(width = 0.15, alpha = 0.3, size = 0.8) +
+  facet_wrap(~Loss.Function, ncol = 4) +
+  labs(x = "Dataset proportion (%)", y = "Total number of reads used", colour = "Dataset") +
+  theme_bw()
+ggsave(file.path(results.path, "Total_reads_used_during_learingError.pdf"))
+
+ggplot(learn_error_logs, aes(x = Total.bases.used, y = label)) +
+  geom_point(aes(size  = Total.reads.used, colour = dataset.prop)) +
+  scale_size_continuous(range = c(0.5, 5)) +
+  facet_wrap(~Loss.Function, ncol = 4) +
+  labs(size = "Total reads used", y = NULL,
+       x="Total bases used", 
+       colour = "Dataset proportion (%)") +
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave(file.path(results.path, "Summary_learingError_reads-bases.pdf"))
 
 #Distances to the full dataset, for every dataset
 distances_by_dataset <- list()
@@ -292,41 +358,46 @@ for(ds in datasets){
   distances_by_dataset[[ds]] <- ds.distances
   distances_long_by_dataset[[ds]] <- ds.distances.long |> mutate(platform = ds)
   
-  p <- plotDistancePoint.prop(ds.distances.long)
-  ggsave(file.path(results.path, paste0(ds, "_dataset_distance_plot.pdf")), plot = p)
-  p <- plotDistanceBoxplot.prop(ds.distances.long)
-  ggsave(file.path(results.path, paste0(ds, "_dataset_distance_boxplot.pdf")), plot = p)
+  #p <- plotDistancePoint.prop(ds.distances.long)
+  #ggsave(file.path(results.path, paste0(ds, "_dataset_distance_plot.pdf")), plot = p)
+  #p <- plotDistanceBoxplot.prop(ds.distances.long)
+  #ggsave(file.path(results.path, paste0(ds, "_dataset_distance_boxplot.pdf")), plot = p)
 }
 
 #Combination of datasets
 combined_distances.long <- bind_rows(distances_long_by_dataset)
 write.csv(combined_distances.long, file.path(results.path, "all_distances.csv"), row.names = F)
 
-p <- combined_distances.long |>
-  ggplot()+
-  geom_boxplot(aes(x=dataset.prop, y=distances), outliers = F)+
-  geom_jitter(aes(x=dataset.prop, y=distances, colour = dataset.prop), alpha=0.6)+
-  facet_grid(cols=vars(errors.function), rows = vars(platform), scales = "free",
+combined_distances.long$label <- getLabel(combined_distances.long$platform)
+
+combined_distances.long |>
+  ggplot() +
+  geom_boxplot(aes(x = dataset.prop, y = distances), outliers = FALSE) +
+  geom_jitter(aes(x = dataset.prop, y = distances, colour = dataset.prop), alpha = 0.6) +
+  facet_grid(cols = vars(errors.function), rows = vars(label), scales = "free",
              labeller = labeller(errors.function = label_wrap_gen(width = 100),
-                                 platform = label_wrap_gen(width = 20)))+
-  labs(x="Dataset proportion (%)",
-       y="Distance to the full dataset") + 
-  labs(colour="Dataset\nproportion (%)") + theme_bw()
-saveFacetPlot(p, "Combined_dataset_distance_boxplot.png", combined_distances.long)
+                                 label = label_wrap_gen(width = 20))) +
+  labs(x = "Dataset proportion (%)",
+       y = "Distance to the full dataset") +
+  theme_bw() +
+  theme(strip.text.y = element_text(angle = 0),
+        legend.position = "none")
+ggsave(file.path(results.path, "Combined_dataset_distance_boxplot.pdf"))
+#saveFacetPlot(p, "Combined_dataset_distance_boxplot.png", combined_distances.long)
 
 dodge <- position_dodge(width = 0.3)
-p <- combined_distances.long |>
-  ggplot(aes(x=dataset.prop, y=distances, colour = platform, shape = platform, group = platform))+
-  stat_summary(fun = median, geom = "line", position = dodge, size=1)+
-  #geom_point(position = dodge, alpha=0.4)+
-  scale_shape_manual(values = rep_len(c(16, 17, 15, 3, 7, 8, 4, 0, 1, 2, 5, 6, 9, 10, 11, 12, 13, 14),
-                                      n_distinct(combined_distances.long$platform)))+
-  facet_grid(cols=vars(errors.function), scales = "free",
-             labeller = labeller(errors.function = label_wrap_gen(width = 100)))+
-  labs(x="Dataset proportion (%)",
-       y="Distance to the full dataset",
-       colour="Dataset", shape="Dataset")+theme_bw()
-saveFacetPlot(p, "Combined_dataset_distance_plot.pdf", combined_distances.long, by.platform = FALSE)
+# p <- combined_distances.long |>
+#   ggplot(aes(x=dataset.prop, y=distances, colour = platform, shape = platform, group = platform))+
+#   stat_summary(fun = median, geom = "line", position = dodge, size=1)+
+#   geom_point(position = dodge, alpha=0.4)+
+#   scale_shape_manual(values = rep_len(c(16, 17, 15, 3, 7, 8, 4, 0, 1, 2, 5, 6, 9, 10, 11, 12, 13, 14),
+#                                       n_distinct(combined_distances.long$platform)))+
+#   facet_grid(cols=vars(errors.function), scales = "free",
+#              labeller = labeller(errors.function = label_wrap_gen(width = 100)))+
+#   labs(x="Dataset proportion (%)",
+#        y="Distance to the full dataset",
+#        colour="Dataset", shape="Dataset")+theme_bw()
+# saveFacetPlot(p, "Combined_dataset_distance_plot.pdf", combined_distances.long, by.platform = FALSE)
 
 
 #Statistics tests
@@ -357,31 +428,47 @@ all_platforms <- bind_rows(test_results, .id = "platform") |>
     )
   )
 
+all_platforms$label <-  getLabel(all_platforms$platform)
 if(nrow(all_platforms) > 0){
   p <- ggplot(all_platforms, aes(x = dataset.prop, y = mean, group = err.func, colour = err.func)) +
     geom_line(position = position_dodge(width = 0.3)) +
-    geom_point(aes(shape = signif), size = 3, position = position_dodge(width = 0.3)) +
-    facet_wrap(~platform, scales = "free_y", ncol = 3,
-               labeller = labeller(platform = label_wrap_gen(width = 30)))  +
+    geom_point(aes(shape = signif), size = 4, position = position_dodge(width = 0.3)) +
+    facet_wrap(~label, scales = "free_y", ncol = 3,
+               labeller = labeller(label = label_wrap_gen(width = 30)))  +
     labs(x = "Dataset proportion (%)", y = "Average distance to the full dataset",
          color = "Error Function", shape="Adjusted p.value") +
     theme_bw()
-  ggsave(file.path(results.path, "summary_statistics_test.png"), plot = p,
+  ggsave(file.path(results.path, "summary_statistics_test.pdf"), plot = p,
          width = 14, height = 4 * ceiling(n_distinct(all_platforms$platform) / 3), limitsize = FALSE)
 }
 
 #Sequence table
 seq_tables <- list()
-meta.list <- list()
+meta.list  <- list()
 N <- length(names(dada2_results_data))
-n=1
+n <- 1
 for (ref_name in names(dada2_results_data)){
-  cat("[",n,"/",N,"] : ", ref_name,"\n")
-  seq.tab <- makeSequenceTable(dada2_results_data[[ref_name]])
+  cat("[", n, "/", N, "] : ", ref_name, "\n")
+  n <- n + 1
+  res <- dada2_results_data[[ref_name]]
+  
+  if (length(res) == 0){
+    message("  [skipped] empty result: ", ref_name)
+    next
+  }
+  
+  seq.tab <- makeSequenceTable(res)
+  
+  fastq.names <- rownames(seq.tab)
+  if (is.null(fastq.names)){
+    fastq.names <- paste0("sample", seq_len(nrow(seq.tab)))
+    message("  [no sample names] ", ref_name, " -> ", paste(fastq.names, collapse = ", "))
+  }
+  
   info <- dada2_meta[ref_name, ]
-  sample.names <- paste0(sub(".rds","",ref_name, fixed = TRUE), "_", rownames(seq.tab))
+  sample.names <- paste0(sub(".rds", "", ref_name, fixed = TRUE), "_", fastq.names)
   meta.list[[ref_name]] <- data.frame(
-    fastq.files      = rownames(seq.tab),
+    fastq.files      = fastq.names,
     platform         = info$dataset,
     dataset.prop     = info$dataset.prop,
     subset.replicate = info$used.seed,
@@ -390,7 +477,6 @@ for (ref_name in names(dada2_results_data)){
   )
   rownames(seq.tab) <- sample.names
   seq_tables[[ref_name]] <- seq.tab
-  n<-n+1
 }
 all.meta.data <- bind_rows(meta.list) |> as.data.frame()
 rownames(all.meta.data) <- all.meta.data$sample.out
