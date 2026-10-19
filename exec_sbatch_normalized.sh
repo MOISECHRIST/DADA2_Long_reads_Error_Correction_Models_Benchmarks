@@ -19,6 +19,12 @@ if [ $step -eq 0 ]; then
         DATASETCOUNT=$(ls data_normalized/41/"${prop_seed}" | wc -l)
         sbatch --array=0-$((DATASETCOUNT-1)) exec_quality_control.sh data_normalized/41/"${prop_seed}"
     done 
+
+    for nbases in $(echo "1e+04 1e+05 1e+06 1e+07 1e+08"); do 
+        DATASETCOUNT=$(ls data_normalized/41/"${nbases}" | wc -l)
+        sbatch --array=0-$((DATASETCOUNT-1)) exec_quality_control.sh data_normalized/41/"${nbases}"
+    done 
+
 elif [ $step -eq 1 ]; then
     #LearnError + Denoising of the raw dataset for each function
     for func_name in "${func_list[@]}"; do
@@ -39,13 +45,15 @@ elif [ $step -eq 3 ]; then
             sbatch --array=0-$((RAWDATASETCOUNT-1)) main.sh data_normalized/41/raw "${func_name}" "${nbases}" 
         done 
     done 
-else 
-    #LearnError + Denoising of the dataset in the nbases approach for each function + randomized sampling + multiple seed
+elif [ $step -eq 4 ]; then
+    #LearnError + Denoising of the dataset in the nbases approach for 
+    #each function after subsampling of bases to keep 1e+04, 1e+05, 1e+06, 1e+07, and 1e+08 bases
     for func_name in "${func_list[@]}"; do
-        for nbases in $(echo "1e+04 1e+05 1e+06 1e+07"); do 
-            for seed in $(echo "100 101 102 103"); do
-                sbatch --array=0-$((RAWDATASETCOUNT-1)) main.sh data_normalized/41/raw "${func_name}" "${nbases}" "${seed}"
-            done 
+        for nbases in $(echo "1e+04 1e+05 1e+06 1e+07 1e+08"); do 
+            sbatch --array=0-$((RAWDATASETCOUNT-1)) main.sh data_normalized/41/"${nbases}" "${func_name}" 
         done 
     done
+else 
+    echo "Option not available"
+    exit 1
 fi
