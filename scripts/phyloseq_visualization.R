@@ -72,7 +72,8 @@ approaches <- list(
 
 top <- 100
 results.path <- "summary"
-
+p <- list()
+i<-1
 for(approach in names(approaches)){
   cfg <- approaches[[approach]]
   path.seqtab <- file.path(cfg$input_data, paste0(cfg$file.prefix, "all_dataset_sequence_table_nochim.rds"))
@@ -138,11 +139,13 @@ for(approach in names(approaches)){
   df.all$dataset.label <- factor(df.all$dataset.label, levels = unique(df.all$dataset.label))
   
   # --- One figure: rows = dataset, columns = error function ---
-  p <- plotTaxaDistrib(df.all, fill = "Species", xlab = cfg$xlab)
+
+  p[[i]] <- plotTaxaDistrib(df.all, fill = "Species", xlab = cfg$xlab)
   n.ds <- nlevels(df.all$dataset.label)
   n.err <- length(unique(df.all$error.func))
   ggsave(file.path(results.path, paste0("taxonomic_distrib_top_", top, "_", cfg$file.prefix, "all_datasets_plot.pdf")),
-         plot = p, width = 3 * n.err + 4, height = 3 * n.ds, limitsize = FALSE)
+         plot = p[[i]], width = 3 * n.err + 4, height = 3 * n.ds, limitsize = FALSE)
+  i<-i+1
 }
 
 message("Done.")

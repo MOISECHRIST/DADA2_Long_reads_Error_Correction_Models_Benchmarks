@@ -96,6 +96,14 @@ readMultiCSV <- function(list_of_paths, completed = character()){
 ## Distance between the error matrix learned on the full dataset and the one 
 ## learned on a subset of bases, for every error function available in the dataset.
 ## Returns a wide data.frame (one column "<errors.function>.rds" per function).
+safeGetErrors <- function(dada_result, ref_name){
+  tryCatch(getErrors(dada_result),
+           error = function(e){
+             message("  [skipped] ", ref_name, ": ", conditionMessage(e))
+             NULL
+           })
+}
+
 computeDistances <- function(dada2_results_data, dada2_meta, dataset_name){
   meta <- dada2_meta[dada2_meta$dataset == dataset_name, ]
   distances <- list()
@@ -106,9 +114,11 @@ computeDistances <- function(dada2_results_data, dada2_meta, dataset_name){
       message("[", dataset_name, "] no full-dataset result for ", err.func, ": skipped")
       next
     }
-    full <- getErrors(dada2_results_data[[full.ref]])
+    full <- safeGetErrors(dada2_results_data[[full.ref]],full.ref)
     for(i in seq_len(nrow(sub.meta))){
-      other <- getErrors(dada2_results_data[[sub.meta$ref_name[i]]])
+      print(sub.meta$ref_name[i])
+      
+      other <- safeGetErrors(dada2_results_data[[sub.meta$ref_name[i]]], sub.meta$ref_name[i])
       if(!identical(dim(full), dim(other))){
         message("[", dataset_name, "] dimension mismatch for ", sub.meta$ref_name[i], ": skipped")
         next
@@ -209,10 +219,12 @@ getLabel <- function(x){
   ifelse(is.na(out), x, out)   # fall back to the raw name if no match
 }
 
-learn_error_logs <- read.csv("summary/results_summary_learning.csv")
+learn_error_logs <- read.csv("summary/new_results_summary_learning.csv")
 pat <- "^(.+?)_(1|5|10|25|50)_([0-9]+)$"
 learn_error_logs <- learn_error_logs[!grepl(pat, learn_error_logs$Dataset, perl = TRUE),]
 learn_error_logs$nbases[is.na(learn_error_logs$nbases)] <- 1e+08
+learn_error_logs <- learn_error_logs |> 
+                    mutate(Dataset = sub("_1e\\+0[4-7]","",Dataset))
 
 results.path <- "summary"
 dir.create(results.path, showWarnings = F)
