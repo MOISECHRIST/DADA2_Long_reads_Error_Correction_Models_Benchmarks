@@ -25,9 +25,12 @@ plotTaxaDistrib <- function(df, fill = "Family", xlab = "Dataset proportion (%)"
     facet_grid(rows = vars(dataset.label), cols = vars(error.func),
                labeller = labeller(dataset.label = label_wrap_gen(width = 25))) +
     labs(x = xlab, y = "Abondance", fill = fill) +
+    #guides(fill = guide_legend(nrow = 3, byrow = TRUE)) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          strip.text.y = element_text(angle = 0))
+          strip.text.y = element_text(angle = 0),
+          #legend.position = "off"
+          )
 }
 
 #Dataset labels
@@ -71,6 +74,7 @@ approaches <- list(
 )
 
 top <- 100
+tax.rank <- "Genus"
 results.path <- "summary"
 p <- list()
 i<-1
@@ -129,7 +133,7 @@ for(approach in names(approaches)){
     ds.label <- if(is.na(idx)) ds else datasets_details$label[idx]
     if(is.na(idx)) message("  no label found for '", ds, "'")
     
-    df <- getTaxaDistrib(ps.ds, top = top, fill = "Species")
+    df <- getTaxaDistrib(ps.ds, top = top, fill = tax.rank)
     df$dataset.label <- ds.label
     df.list[[ds]] <- df
   }
@@ -140,7 +144,7 @@ for(approach in names(approaches)){
   
   # --- One figure: rows = dataset, columns = error function ---
 
-  p[[i]] <- plotTaxaDistrib(df.all, fill = "Species", xlab = cfg$xlab)
+  p[[i]] <- plotTaxaDistrib(df.all, fill = tax.rank, xlab = cfg$xlab)
   n.ds <- nlevels(df.all$dataset.label)
   n.err <- length(unique(df.all$error.func))
   ggsave(file.path(results.path, paste0("taxonomic_distrib_top_", top, "_", cfg$file.prefix, "all_datasets_plot.pdf")),

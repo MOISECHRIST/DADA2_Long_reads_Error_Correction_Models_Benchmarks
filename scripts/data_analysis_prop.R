@@ -172,13 +172,16 @@ plotDistanceBoxplot.prop <- function(distances.long){
 plotResourcePlot.prop <- function(execution.time.long, metric, ylab){
   execution.time.long |>
     ggplot()+
-    geom_boxplot(aes(x=dataset.prop, y=.data[[metric]], colour = label), alpha=0.6)+
-    facet_grid(cols=vars(errors.function), rows = vars(process_name), scales = "free",
+    geom_boxplot(aes(x=dataset.prop, y=.data[[metric]], colour = process_name), alpha=0.6, outliers = FALSE)+
+    facet_grid(cols=vars(errors.function), rows = vars(label),
                labeller = labeller(errors.function = label_wrap_gen(width = 100),
                                    platform = label_wrap_gen(width = 20)))+
     labs(x="Dataset proportion (%)",
          y=ylab,
-         colour = "Dataset") + theme_bw()
+         colour = "Process name",
+         #colour = "Dataset"
+         ) + theme_bw() +
+    theme(strip.text.y = element_text(angle = 0))
 }
 
 plotExecutionTimePlot.prop <- function(execution.time.long){
@@ -374,7 +377,7 @@ combined_distances.long |>
   ggplot() +
   geom_boxplot(aes(x = dataset.prop, y = distances), outliers = FALSE) +
   geom_jitter(aes(x = dataset.prop, y = distances, colour = dataset.prop), alpha = 0.6) +
-  facet_grid(cols = vars(errors.function), rows = vars(label), scales = "free",
+  facet_grid(cols = vars(errors.function), rows = vars(label),
              labeller = labeller(errors.function = label_wrap_gen(width = 100),
                                  label = label_wrap_gen(width = 20))) +
   labs(x = "Dataset proportion (%)",

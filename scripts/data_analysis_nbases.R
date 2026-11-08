@@ -168,15 +168,15 @@ plotDistancePoint.prop <- function(distances.long){
 ## Generic resource plot: one point per run/step, metric on y
 plotResourcePlot.prop <- function(execution.time.long, metric, ylab){
   execution.time.long |>
-    ggplot(aes(x=dataset.prop, y=.data[[metric]], colour = label, 
+    ggplot(aes(x=dataset.prop, y=.data[[metric]], colour = process_name, 
                group = interaction(label, process_name)))+
     geom_point(aes(shape = HPC.node))+
     geom_line()+
-    facet_grid(cols=vars(errors.function), rows = vars(process_name), scales = "free",
+    facet_grid(cols=vars(errors.function), rows = vars(label),
                labeller = labeller(errors.function = label_wrap_gen(width = 100)))+
     labs(x="Number of bases for learning errors",
          y=ylab,
-         colour = "Dataset", shape = "HPC Node") + theme_bw() +
+         colour = "Process name", shape = "HPC Node") + theme_bw() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
@@ -327,8 +327,7 @@ combined_distances.long |> ggplot(aes(x=dataset.prop, y=distances,
                                       group = interaction(errors.function, label)))+
   geom_point()+
   geom_line()+
-  facet_grid(cols=vars(errors.function), rows = vars(label),
-             scales = "free") + theme_bw() +
+  facet_grid(cols=vars(errors.function), rows = vars(label)) + theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),strip.text.y = element_text(angle = 0),
         legend.position = "none")+
   labs(x="Number of bases for learning errors",
