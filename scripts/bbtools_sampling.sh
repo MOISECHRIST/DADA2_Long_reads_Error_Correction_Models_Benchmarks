@@ -7,7 +7,7 @@
 ## Creation date : 17-10-2026
 ##------------------------------------------------------------------------
 
-#SBATCH --partition=pibu_el8
+#SBATCH --partition=pshort_el8
 #SBATCH --mail-user=moise.meka@students.unibe.ch
 #SBATCH --mail-type=start,end,fail
 #SBATCH --job-name="bbtools_sampling"
@@ -24,8 +24,9 @@ fi
 
 DATA_DIR=$1
 NBASES=$(printf "%.0f" "$2")
+SEED=${3:-41}
 CONTAINER="${PWD}/containers/bbtools_40.01.sif"
-OUTDIR="${PWD}/data_normalized/$2/$(basename $DATA_DIR)"
+OUTDIR="${PWD}/data_normalized/$2/$(basename $DATA_DIR)_${SEED}"
 
 fastq_file=$(ls "$DATA_DIR")
 
@@ -35,4 +36,4 @@ apptainer exec --cleanenv --bind "$PWD:/workdir" \
     "${CONTAINER}" \
     reformat.sh \
         in1="${DATA_DIR}/${fastq_file}" out1="${OUTDIR}/${fastq_file}" \
-        samplebasestarget="${NBASES}" sampleseed=41
+        samplebasestarget="${NBASES}" sampleseed=$SEED

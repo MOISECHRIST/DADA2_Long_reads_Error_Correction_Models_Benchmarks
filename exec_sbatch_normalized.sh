@@ -50,7 +50,8 @@ elif [ $step -eq 4 ]; then
     #each function after subsampling of bases to keep 1e+04, 1e+05, 1e+06, 1e+07, and 1e+08 bases
     for func_name in "${func_list[@]}"; do
         for nbases in $(echo "1e+04 1e+05 1e+06 1e+07 1e+08"); do 
-            sbatch --array=0-$((RAWDATASETCOUNT-1)) main.sh data_normalized/41/"${nbases}" "${func_name}" 
+            DATASETCOUNT=$(ls data_normalized/"${nbases}" | wc -l)
+            sbatch --array=0-$((DATASETCOUNT-1)) main.sh data_normalized/"${nbases}" "${func_name}" 
         done 
     done
 else 

@@ -13,3 +13,4 @@ summary/*.rds
 summary/*/*.csv
 summary/*.csv
 results*
+taxa_out*
