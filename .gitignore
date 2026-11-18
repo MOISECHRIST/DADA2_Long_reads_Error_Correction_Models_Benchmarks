@@ -14,3 +14,4 @@ summary/*/*.csv
 summary/*.csv
 results*
 taxa_out*
+.RDataTmp1

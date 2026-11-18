@@ -1,4 +1,3 @@
-
 #!/usr/bin/R
 
 #Load libraries
@@ -10,25 +9,29 @@ library(wavethresh, verbose = FALSE, quietly = TRUE); packageVersion("wavethresh
 
 #Constants
 ## Number of bases used for learning errors. "1e+08" = default (full dataset), 
-## i.e. runs whose directory name has no "_1e+0X" suffix.
+## i.e. runs whose directory name has no "_1e+0X[_<seed>]" suffix.
 prop.levels <- c("1e+04", "1e+05", "1e+06", "1e+07", "1e+08")
+full.prop <- "1e+08"
+## Run directory: <dataset>[_<nbases>[_<seed>]]  (several seeds per nbases)
+nbases.pat <- "^(.+?)_(1e\\+0[0-9])(?:_([0-9]+))?$"
+## Runs of the proportion experiment (<dataset>_<prop>_<seed>), not part of this analysis
+prop.pat <- "^(.+?)_(1|5|10|25|50)_([0-9]+)$"
 ## Resource metrics written by track_resources() in dada2_analysis.R
 resource.cols <- c("wall_sec", "cpu_sec", "avg_cores_used", "threads_available",
                    "cpus_allocated", "peak_ram_gb", "end_ram_gb")
 
 #Define functions
 
-## Parse <dataset>[_<nbases>][_<seed>]/RDS/<prefix>_<errors.function>.<ext>
-## Dataset names now contain underscores (e.g. LIB_16S_KINNEX_SEGMENTED_REVIO_SPRQ_NX), 
-## so we cannot split on "_" anymore: the nbases (and optional seed) suffix is matched 
+## Parse <dataset>[_<nbases>[_<seed>]]/RDS/<prefix>_<errors.function>.<ext>
+## Dataset names contain underscores (e.g. LIB_16S_KINNEX_SEGMENTED_REVIO_SPRQ_NX), 
+## so we cannot split on "_": the nbases (and optional seed) suffix is matched 
 ## from the end of the run directory name.
 parseRunPath <- function(file_path){
   run  <- basename(dirname(dirname(file_path)))
   file <- basename(file_path)
-  pat  <- "^(.+?)_(1e\\+0[0-9])(?:_([0-9]+))?$"
-  has.suffix <- grepl(pat, run, perl = TRUE)
+  has.suffix <- grepl(nbases.pat, run, perl = TRUE)
   
-  used.seed <- ifelse(has.suffix, sub(pat, "\\3", run, perl = TRUE), NA_character_)
+  used.seed <- ifelse(has.suffix, sub(nbases.pat, "\\3", run, perl = TRUE), NA_character_)
   used.seed[!is.na(used.seed) & used.seed == ""] <- NA_character_
   
   errors.function <- sub("^(dada_results|learn_error_data|execution_time)_", "", file)
@@ -37,8 +40,8 @@ parseRunPath <- function(file_path){
   data.frame(
     ref_name        = paste0(run, "_", file),
     run             = run,
-    dataset         = ifelse(has.suffix, sub(pat, "\\1", run, perl = TRUE), run),
-    dataset.prop    = ifelse(has.suffix, sub(pat, "\\2", run, perl = TRUE), "1e+08"),
+    dataset         = ifelse(has.suffix, sub(nbases.pat, "\\1", run, perl = TRUE), run),
+    dataset.prop    = ifelse(has.suffix, sub(nbases.pat, "\\2", run, perl = TRUE), full.prop),
     used.seed       = used.seed,
     errors.function = errors.function,
     stringsAsFactors = FALSE
@@ -69,7 +72,7 @@ readMultiCSV <- function(list_of_paths, completed = character()){
     df$used.seed         <- info$used.seed
     df$errors.function   <- info$errors.function
     df$status            <- ifelse(paste0(info$run, "_dada_results_", info$errors.function, ".rds") %in% completed,
-                        "completed", "failed")
+                                   "completed", "failed")
     res[[info$ref_name]] <- df
   }
   res <- bind_rows(res)
@@ -94,8 +97,10 @@ readMultiCSV <- function(list_of_paths, completed = character()){
 }
 
 ## Distance between the error matrix learned on the full dataset and the one 
-## learned on a subset of bases, for every error function available in the dataset.
-## Returns a wide data.frame (one column "<errors.function>.rds" per function).
+## learned on a subset of bases (one value per seed), for every error function 
+## available in the dataset.
+## Returns a wide data.frame (one column "<errors.function>.rds" per function), 
+## one row per (dataset.prop, used.seed).
 safeGetErrors <- function(dada_result, ref_name){
   tryCatch(getErrors(dada_result),
            error = function(e){
@@ -109,16 +114,19 @@ computeDistances <- function(dada2_results_data, dada2_meta, dataset_name){
   distances <- list()
   for(err.func in unique(meta$errors.function)){
     sub.meta <- meta[meta$errors.function == err.func, ]
-    full.ref <- sub.meta$ref_name[sub.meta$dataset.prop == "1e+08"]
+    full.ref <- sub.meta$ref_name[sub.meta$dataset.prop == full.prop]
     if(length(full.ref) != 1){
       message("[", dataset_name, "] no full-dataset result for ", err.func, ": skipped")
       next
     }
-    full <- safeGetErrors(dada2_results_data[[full.ref]],full.ref)
+    full <- safeGetErrors(dada2_results_data[[full.ref]], full.ref)
+    if(is.null(full)){
+      message("[", dataset_name, "] full-dataset error matrix is NULL for ", err.func, ": skipped")
+      next
+    }
     for(i in seq_len(nrow(sub.meta))){
-      print(sub.meta$ref_name[i])
-      
       other <- safeGetErrors(dada2_results_data[[sub.meta$ref_name[i]]], sub.meta$ref_name[i])
+      if(is.null(other)) next
       if(!identical(dim(full), dim(other))){
         message("[", dataset_name, "] dimension mismatch for ", sub.meta$ref_name[i], ": skipped")
         next
@@ -136,7 +144,7 @@ computeDistances <- function(dada2_results_data, dada2_meta, dataset_name){
   distances <- bind_rows(distances) |>
     pivot_wider(names_from = errors.function, values_from = distances) |>
     as.data.frame()
-  distances$dataset.prop <- as.numeric(distances$dataset.prop)
+  #dataset.prop stays a character ("1e+04", ...) to match prop.levels exactly
   distances$used.seed <- as.numeric(distances$used.seed)
   return(distances)
 }
@@ -150,34 +158,46 @@ transToLong.prop <- function(distances){
                  values_drop_na = TRUE) |>
     mutate(
       errors.function = sub(".rds","",errors.function, fixed = TRUE),
-      dataset.prop = factor(format(dataset.prop, scientific = TRUE), 
-                            levels = prop.levels)
+      dataset.prop = factor(dataset.prop, levels = prop.levels)
     )
   return(distances.long)
 }
 
 plotDistancePoint.prop <- function(distances.long){
   distances.long |>
-    ggplot(aes(x=dataset.prop, y=distances))+
-    geom_jitter(alpha=0.6, size = 3)+
+    ggplot()+
+    geom_point(aes(x=dataset.prop, y=distances), alpha=0.4)+
     facet_grid(cols=vars(errors.function))+
-    labs(x="Number bases to consider for learning error",
-         y="Distance to the default number") + theme_bw()
+    labs(x="Number of bases for learning errors",
+         y="Distance to the full dataset") + theme_bw()
 }
 
-## Generic resource plot: one point per run/step, metric on y
+plotDistanceBoxplot.prop <- function(distances.long){
+  distances.long |>
+    ggplot()+
+    geom_boxplot(aes(x=dataset.prop, y=distances), alpha=0.4)+
+    facet_grid(cols=vars(errors.function))+
+    labs(x="Number of bases for learning errors",
+         y="Distance to the full dataset") + theme_bw()
+}
+
+## Generic resource plot: one boxplot per nbases (spread over the seeds), 
+## individual runs as points (shape = HPC node), median as line
 plotResourcePlot.prop <- function(execution.time.long, metric, ylab){
+  dodge <- position_dodge(width = 0.75)
   execution.time.long |>
-    ggplot(aes(x=dataset.prop, y=.data[[metric]], colour = process_name, 
-               group = interaction(label, process_name)))+
-    geom_point(aes(shape = HPC.node))+
-    geom_line()+
+    ggplot(aes(x = dataset.prop, y = .data[[metric]], colour = process_name))+
+    geom_boxplot(alpha = 0.6, outliers = FALSE, position = dodge)+
+    geom_point(aes( group = process_name), position = dodge, alpha = 0.5)+
+    stat_summary(aes(group = process_name), fun = median, geom = "line", position = dodge)+
     facet_grid(cols=vars(errors.function), rows = vars(label),
-               labeller = labeller(errors.function = label_wrap_gen(width = 100)))+
+               labeller = labeller(errors.function = label_wrap_gen(width = 100),
+                                   label = label_wrap_gen(width = 20)))+
     labs(x="Number of bases for learning errors",
          y=ylab,
-         colour = "Process name", shape = "HPC Node") + theme_bw() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+         colour = "Process name") + theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          strip.text.y = element_text(angle = 0))
 }
 
 plotExecutionTimePlot.prop <- function(execution.time.long){
@@ -192,8 +212,45 @@ saveFacetPlot <- function(plot, filename, data, by.platform = TRUE, ...){
          width = 2.5 * n.col + 2, height = 2 * n.row + 1, limitsize = FALSE, ...)
 }
 
+## Is the distance to the full dataset significantly > 0 at each number of bases?
+## (t-test if Shapiro-Wilk does not reject normality, Wilcoxon otherwise), 
+## using the seeds as replicates. Needs >= 3 seeds per nbases (Shapiro-Wilk); 
+## groups with fewer are dropped. Returns NULL if there is nothing to test.
+runDistanceTests <- function(distances){
+  results <- list()
+  for(err.func in grep("\\.rds$", names(distances), value = TRUE)){
+    test_by_group <- distances |>
+      #The full dataset is at distance 0 from itself: nothing to test
+      filter(dataset.prop != full.prop, !is.na(.data[[err.func]])) |>
+      mutate(dataset.prop = factor(dataset.prop, levels = setdiff(prop.levels, full.prop))) |>
+      group_by(dataset.prop) |>
+      summarise(
+        n         = n(),
+        mean      = mean(.data[[err.func]], na.rm = TRUE),
+        sd        = sd(.data[[err.func]], na.rm = TRUE),
+        median    = median(.data[[err.func]], na.rm = TRUE),
+        shapiro.p = tryCatch(shapiro.test(.data[[err.func]])$p.value,
+                             error = function(e) NA_real_),
+        p.value   = if_else(shapiro.p > 0.05, tryCatch(t.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
+                                                       error = function(e) NA_real_),
+                            tryCatch(wilcox.test(.data[[err.func]], mu = 0, alternative = "greater")$p.value,
+                                     error = function(e) NA_real_)),
+        .groups = "drop"
+      )|>
+      mutate(err.func = err.func)
+    
+    results[[err.func]] <- test_by_group
+  }
+  if(length(results) == 0) return(NULL)
+  all_results <- bind_rows(results) |>
+    mutate(p.adj.bonferroni = p.adjust(p.value, method = "bonferroni"),
+           p.adj.benjamin.hochberg = p.adjust(p.value, method = "BH"))
+  all_results <- all_results |> drop_na(shapiro.p)
+  return(all_results)
+}
+
 #Input data
-path.alldataset <- file.path(list.files("results_nbases", full.names = T), "RDS")
+path.alldataset <- file.path(list.files("results", full.names = T), "RDS")
 paths_learn_errors_data <- list.files(path.alldataset, pattern = "learn_error", full.names = T) 
 paths_dada2_results_data <- list.files(path.alldataset, pattern = "dada_results", full.names = T)
 paths_exec_times <- list.files(path.alldataset, pattern = "execution_time", full.names = T) 
@@ -219,14 +276,22 @@ getLabel <- function(x){
   ifelse(is.na(out), x, out)   # fall back to the raw name if no match
 }
 
+## Learning-error logs: keep the nbases runs only, and parse the run name 
+## (<dataset>[_<nbases>[_<seed>]]) so that every seed is a separate row.
 learn_error_logs <- read.csv("summary/new_results_summary_learning.csv")
-pat <- "^(.+?)_(1|5|10|25|50)_([0-9]+)$"
-learn_error_logs <- learn_error_logs[!grepl(pat, learn_error_logs$Dataset, perl = TRUE),]
+learn_error_logs <- learn_error_logs[!grepl(prop.pat, learn_error_logs$Dataset, perl = TRUE),]
 learn_error_logs$nbases[is.na(learn_error_logs$nbases)] <- 1e+08
-learn_error_logs <- learn_error_logs |> 
-                    mutate(Dataset = sub("_1e\\+0[4-7]","",Dataset))
+learn_error_logs <- learn_error_logs |>
+  mutate(
+    has.suffix = grepl(nbases.pat, Dataset, perl = TRUE),
+    platform   = ifelse(has.suffix, sub(nbases.pat, "\\1", Dataset, perl = TRUE), Dataset),
+    used.seed  = ifelse(has.suffix, sub(nbases.pat, "\\3", Dataset, perl = TRUE), NA_character_),
+    nbases     = factor(sprintf("%.0e", nbases), levels = prop.levels),
+    label      = getLabel(platform)
+  )
+learn_error_logs$used.seed[learn_error_logs$used.seed %in% ""] <- NA_character_
 
-results.path <- "summary"
+results.path <- "summary/nbases"
 dir.create(results.path, showWarnings = F)
 
 #Load data
@@ -240,6 +305,12 @@ rownames(dada2_meta) <- dada2_meta$ref_name
 datasets <- unique(dada2_meta$dataset)
 message(length(datasets), " datasets found:\n  ", paste(datasets, collapse = "\n  "))
 
+#Number of seeds (replicates) available for each dataset / nbases / error function
+seed_counts <- dada2_meta |>
+  group_by(dataset, dataset.prop, errors.function) |>
+  summarise(n_seeds = n_distinct(used.seed, na.rm = TRUE), .groups = "drop")
+write.csv(seed_counts, file.path(results.path, "nbases_seed_counts.csv"), row.names = F)
+
 #Failed runs (no dada_results file: only the failed learnError step was logged)
 failed_runs <- exec_times_data |>
   filter(status == "failed") |>
@@ -250,58 +321,65 @@ failed_runs |> count(errors.function, name = "n_failed_runs") |> print()
 #Execution time and resource usage (completed runs only)
 exec_times_ok <- exec_times_data |> filter(status == "completed")
 exec_times_ok$label <- getLabel(exec_times_ok$platform)
+#One run = dataset + nbases + seed + error function
 exec_times_ok <- exec_times_ok |> mutate(
-  id = paste(platform, dataset.prop, errors.function, sep = "_")
+  id = paste(platform, dataset.prop, used.seed, errors.function, sep = "_")
 )
 
 tmp <- learn_error_logs |>
-  mutate(nbases = factor(format(nbases, scientific = TRUE),
-                         levels = prop.levels),
-         id = paste(Dataset, nbases, 
-                    Loss.Function, sep = "_")) |>
+  mutate(id = paste(platform, nbases, used.seed, Loss.Function, sep = "_")) |>
   dplyr::select(id, HPC.node)
+if(anyDuplicated(tmp$id)){
+  warning("Several learning-error log rows share the same dataset/nbases/seed/function: ",
+          "only the first HPC node is kept for each.")
+  tmp <- distinct(tmp, id, .keep_all = TRUE)
+}
 
 exec_times_ok <- left_join(exec_times_ok, tmp, by=c("id"="id")) 
+exec_times_ok$HPC.node[is.na(exec_times_ok$HPC.node)] <- "unknown"
 
 ## Execution time
-plotExecutionTimePlot.prop(exec_times_ok)
-ggsave(file.path(results.path,"nbases_Execution_Time_boxplot.pdf"))
+p <- plotExecutionTimePlot.prop(exec_times_ok)
+ggsave(file.path(results.path, "nbases_Execution_Time_boxplot.svg"))
 #saveFacetPlot(p, "nbases_Execution_Time_boxplot.pdf", exec_times_ok)
 
 ## Total CPU time
-plotResourcePlot.prop(exec_times_ok, "cpu_sec", "CPU Time (s)")
-ggsave(file.path(results.path,"nbases_CPU_Time_plot.pdf"))
-# saveFacetPlot(p, "nbases_CPU_Time_plot.pdf", exec_times_ok)
+p <- plotResourcePlot.prop(exec_times_ok, "cpu_sec", "CPU Time (s)")
+ggsave(file.path(results.path, "nbases_CPU_Time_plot.svg"))
+#saveFacetPlot(p, "nbases_CPU_Time_plot.pdf", exec_times_ok)
 
 ## Average number of busy cores (cpu_sec / wall_sec)
-plotResourcePlot.prop(exec_times_ok, "avg_cores_used", "Average cores used")
-ggsave(file.path(results.path,"nbases_Cores_Used_plot.pdf"))
+p <- plotResourcePlot.prop(exec_times_ok, "avg_cores_used", "Average cores used")
+ggsave(file.path(results.path, "nbases_Cores_Used_plot.svg"))
 #saveFacetPlot(p, "nbases_Cores_Used_plot.pdf", exec_times_ok)
 
 ## CPU efficiency: average busy cores / cores allocated
-plotResourcePlot.prop(exec_times_ok, "cpu_efficiency", "CPU efficiency (avg cores used / cores available)")
-ggsave(file.path(results.path,"nbases_CPU_Efficiency_plot.pdf"))
-# saveFacetPlot(p, "nbases_CPU_Efficiency_plot.pdf", exec_times_ok)
+p <- plotResourcePlot.prop(exec_times_ok, "cpu_efficiency", "CPU efficiency (avg cores used / cores available)")
+ggsave(file.path(results.path, "nbases_CPU_Efficiency_plot.svg"))
+#saveFacetPlot(p, "nbases_CPU_Efficiency_plot.pdf", exec_times_ok)
 
 ## Peak RAM
 ## NB: peak is per step only if /proc/self/clear_refs was writable; otherwise 
 ## VmHWM is cumulative and Denoising peak >= learnError peak.
-plotResourcePlot.prop(exec_times_ok, "peak_ram_gb", "Peak RAM (GB)")
-ggsave(file.path(results.path,"nbases_Peak_RAM_plot.pdf"))
-# saveFacetPlot(p, "nbases_Peak_RAM_plot.pdf", exec_times_ok)
+p <- plotResourcePlot.prop(exec_times_ok, "peak_ram_gb", "Peak RAM (GB)")
+ggsave(file.path(results.path, "nbases_Peak_RAM_plot.svg"))
+#saveFacetPlot(p, "nbases_Peak_RAM_plot.pdf", exec_times_ok)
 
-## Summary table (mean over replicates/seeds)
+## Summary table (mean, sd and median over replicates/seeds)
 resource_summary <- exec_times_ok |>
   group_by(platform, errors.function, dataset.prop, process_name) |>
   summarise(
     n_runs = n(),
     across(c(duration, cpu_sec, avg_cores_used, cpu_efficiency, peak_ram_gb, end_ram_gb),
-           ~ mean(.x, na.rm = TRUE), .names = "mean_{.col}"),
+           list(mean   = ~ mean(.x, na.rm = TRUE),
+                sd     = ~ sd(.x, na.rm = TRUE),
+                median = ~ median(.x, na.rm = TRUE)),
+           .names = "{.fn}_{.col}"),
     .groups = "drop"
   )
 write.csv(resource_summary, file.path(results.path, "nbases_resource_summary.csv"), row.names = F)
 
-#Distances to the full dataset, for every dataset
+#Distances to the full dataset, for every dataset (one value per seed)
 distances_by_dataset <- list()
 distances_long_by_dataset <- list()
 for(ds in datasets){
@@ -323,32 +401,71 @@ write.csv(combined_distances.long, file.path(results.path, "nbases_all_distances
 
 combined_distances.long$label <- getLabel(combined_distances.long$platform)
 
-combined_distances.long |> ggplot(aes(x=dataset.prop, y=distances,
-                                      group = interaction(errors.function, label)))+
-  geom_point()+
-  geom_line()+
-  facet_grid(cols=vars(errors.function), rows = vars(label)) + theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),strip.text.y = element_text(angle = 0),
-        legend.position = "none")+
-  labs(x="Number of bases for learning errors",
-       y="Distance to the full dataset")
-ggsave(file.path(results.path, "Combined_dataset_distance_boxplot.pdf"))
+p <- combined_distances.long |>
+  ggplot(aes(x = dataset.prop, y = distances)) +
+  geom_boxplot(outliers = FALSE) +
+  geom_jitter(aes(colour = dataset.prop), width = 0.15, alpha = 0.6) +
+  stat_summary(aes(group = 1), fun = median, geom = "line", colour = "grey30") +
+  facet_grid(cols = vars(errors.function), rows = vars(label),
+             labeller = labeller(errors.function = label_wrap_gen(width = 100),
+                                 label = label_wrap_gen(width = 20))) +
+  labs(x = "Number of bases for learning errors",
+       y = "Distance to the full dataset") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text.y = element_text(angle = 0),
+        legend.position = "none")
+ggsave(file.path(results.path, "Combined_dataset_distance_boxplot.svg"))
+#saveFacetPlot(p, "Combined_dataset_distance_boxplot.pdf", combined_distances.long)
 
-#Plot learning Error log data 
-learn_error_logs <- learn_error_logs |>
-  mutate(
-    nbases       = factor(format(nbases, scientific = TRUE)),
-    has.suffix   = grepl(pat, Dataset, perl = TRUE),
-    platform     = ifelse(has.suffix, sub(pat, "\\1", Dataset, perl = TRUE), Dataset),
-    dataset.prop = factor(ifelse(has.suffix, sub(pat, "\\2", Dataset, perl = TRUE), "1e+08"),
-                          levels = prop.levels),
-    used.seed    = ifelse(has.suffix, sub(pat, "\\3", Dataset, perl = TRUE), NA_character_),
-    label        = getLabel(platform)
-  )
+#Statistics tests
+## One test table per dataset (written as nbases_<dataset>_summary_test.txt, lower case)
+test_results <- list()
+for(ds in names(distances_by_dataset)){
+  ds.results <- runDistanceTests(distances_by_dataset[[ds]])
+  if(is.null(ds.results) || nrow(ds.results) == 0){
+    message("[", ds, "] not enough replicates (seeds) for statistical tests: skipped")
+    next
+  }
+  write.table(ds.results, file.path(results.path, paste0("nbases_", tolower(ds), "_summary_test.txt")), row.names = F)
+  ds.results |>
+    dplyr::filter(p.adj.bonferroni > 0.01 | p.adj.benjamin.hochberg > 0.01) |>
+    print()
+  test_results[[ds]] <- ds.results
+}
 
+##Combination and visualization 
+if(length(test_results) > 0){
+  all_platforms <- bind_rows(test_results, .id = "platform") |>
+    mutate(
+      dataset.prop = factor(dataset.prop, levels = setdiff(prop.levels, full.prop)),
+      signif = case_when(
+        p.adj.bonferroni < 0.001 ~ "< 0.001",
+        p.adj.bonferroni < 0.01  ~ "< 0.01",
+        p.adj.bonferroni < 0.05  ~ "< 0.05",
+        TRUE ~ "ns"
+      )
+    )
+  all_platforms$label <- getLabel(all_platforms$platform)
+  
+  p <- ggplot(all_platforms, aes(x = dataset.prop, y = mean, group = err.func, colour = err.func)) +
+    geom_line(position = position_dodge(width = 0.3)) +
+    geom_point(aes(shape = signif), size = 4, position = position_dodge(width = 0.3)) +
+    facet_wrap(~label, scales = "free_y", ncol = 3,
+               labeller = labeller(label = label_wrap_gen(width = 30)))  +
+    labs(x = "Number of bases for learning errors", y = "Average distance to the full dataset",
+         color = "Error Function", shape = "Adjusted p.value") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  ggsave(file.path(results.path, "nbases_summary_statistics_test.pdf"), plot = p,
+         width = 14, height = 4 * ceiling(n_distinct(all_platforms$platform) / 3), limitsize = FALSE)
+}
+
+#Plot learning Error log data (one point per seed)
 ggplot(learn_error_logs,
        aes(x = nbases, y = Total.bases.used, colour = label)) +
-  geom_point() +
+  geom_boxplot(outlier.shape = NA, alpha = 0.5) +
+  geom_jitter(width = 0.15, alpha = 0.3, size = 0.8) +
   facet_wrap(~Loss.Function, ncol = 4) +
   labs(x = "Number of bases for learning errors", y = "Total bases used", colour = "Dataset") +
   theme_bw()+theme(axis.text.x = element_text(angle = 45, hjust = 1))
@@ -356,10 +473,11 @@ ggsave(file.path(results.path, "Total_bases_used_during_learingError.pdf"))
 
 ggplot(learn_error_logs,
        aes(x = nbases, y = Total.reads.used, colour = label)) +
-  geom_point() +
+  geom_boxplot(outlier.shape = NA, alpha = 0.5) +
+  geom_jitter(width = 0.15, alpha = 0.3, size = 0.8) +
   facet_wrap(~Loss.Function, ncol = 4) +
   labs(x = "Number of bases for learning errors", y = "Total number of reads used", colour = "Dataset") +
-  theme_bw()
+  theme_bw()+theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ggsave(file.path(results.path, "Total_reads_used_during_learingError.pdf"))
 
 ggplot(learn_error_logs, aes(x = Total.bases.used, y = label)) +
